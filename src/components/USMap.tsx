@@ -134,35 +134,37 @@ const USMap = () => {
 
             for (const row of rows) {
               const stateRaw = (row as any)[stateCol];
-              if (!stateRaw) continue;
+              if (stateRaw) {
+                const stateCode = String(stateRaw).trim();
 
-              const stateCode = String(stateRaw).trim();
+                let sum = 0;
+                let count = 0;
 
-              let sum = 0;
-              let count = 0;
+                for (const col of dateCols) {
+                  const value = row[col];
+                  if (value !== null && value !== undefined && value !== '') {
+                    const num =
+                      typeof value === 'number' ? value : parseFloat(String(value));
+                    if (!Number.isNaN(num)) {
+                      sum += num;
+                      count += 1;
+                    }
+                  }
+                }
 
-              for (const col of dateCols) {
-                const value = row[col];
-                if (value === null || value === undefined || value === '') continue;
+                if (count > 0) {
+                  const zipAvg = sum / count;
 
-                const num =
-                  typeof value === 'number' ? value : parseFloat(String(value));
-                if (!Number.isNaN(num)) {
-                  sum += num;
-                  count += 1;
+                  if (!(stateCode in stateSums)) {
+                    stateSums[stateCode] = 0;
+                    stateCounts[stateCode] = 0;
+                  }
+                  stateSums[stateCode] += zipAvg;
+                  stateCounts[stateCode] += 1;
                 }
               }
-
-              if (count === 0) continue;
-              const zipAvg = sum / count;
-
-              if (!(stateCode in stateSums)) {
-                stateSums[stateCode] = 0;
-                stateCounts[stateCode] = 0;
-              }
-              stateSums[stateCode] += zipAvg;
-              stateCounts[stateCode] += 1;
             }
+
 
             const stateAverages: StateValues = {};
             for (const code in stateSums) {
