@@ -2,7 +2,7 @@
 
 'use client';
 
-import { useSession } from 'next-auth/react';
+// import { useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
 // import { Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
 import { Container, Nav, Navbar } from 'react-bootstrap';
@@ -23,7 +23,7 @@ const NavBar: React.FC = () => {
           <Nav className="me-auto justify-content-start">
                   <Nav.Link id="add-stuff-nav" href="/add" key="add" active={pathName === '/add'}>
                     2000-2010
-                  </Nav.Link>,
+                  </Nav.Link>
                   <Nav.Link id="list-stuff-nav" href="/list" key="list" active={pathName === '/list'}>
                     2010-2020
                   </Nav.Link>

@@ -205,6 +205,7 @@ const USMap = () => {
   );
 
   const getStateCodeFromGeo = (geo: any): string | undefined => {
+    /* eslint-disable react/prop-types */
     const props = geo.properties || {};
     const postal = props.postal || props.STUSPS;
     if (postal) return postal;
