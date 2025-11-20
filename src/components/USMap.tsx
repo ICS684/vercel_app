@@ -1,8 +1,11 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+// @ts-ignore
 import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+// @ts-ignore
 import { scaleLinear } from 'd3-scale';
+// @ts-ignore
 import Papa from 'papaparse';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
@@ -91,7 +94,7 @@ const USMap = () => {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
-          complete: (results) => {
+          complete: (results: { data: never[]; }) => {
             const rows = results.data || [];
             if (rows.length === 0) {
               setLoading(false);
@@ -216,6 +219,25 @@ const USMap = () => {
     return undefined;
   };
 
+  interface GeoProperties {
+    NAME?: string;
+    postal?: string;
+    STUSPS?: string;
+
+    [key: string]: unknown;
+  }
+
+  interface GeoFeature {
+    id?: string | number;
+    rsmKey: string;
+    properties?: GeoProperties;
+    geometry?: {
+      type: string;
+      coordinates: number[] | number[][] | number[][][];
+    };
+  }
+
+  // @ts-ignore
   return (
     <div style={{ position: 'relative' }}>
       {loading && <p>Loading data…</p>}
@@ -246,37 +268,33 @@ const USMap = () => {
         style={{ width: '100%', height: 'auto' }}
       >
         <Geographies geography={geoUrl}>
-          {({ geographies }) => geographies.map((geo) => {
+          {({ geographies }: { geographies: GeoFeature[] }) => geographies.map((geo: GeoFeature) => {
             const code = getStateCodeFromGeo(geo);
             const value = code ? stateValues[code] : undefined;
 
             return (
               <Geography
                 key={geo.rsmKey}
-                geography={geo}
+                geography={geo as any} // necessary due to Geography typing
                 fill={value !== undefined ? colorScale(value) : '#EEE'}
                 style={{
                   default: { stroke: '#333', strokeWidth: 0.5, outline: 'none' },
                   hover: { fill: '#555', outline: 'none' },
                   pressed: { fill: '#333', outline: 'none' },
                 }}
-                onMouseEnter={(event) => {
+                onMouseEnter={(event: React.MouseEvent<SVGPathElement>) => {
                   if (code && value !== undefined) {
                     setTooltip({
                       x: event.clientX,
                       y: event.clientY,
-                      text: `${code} — ${currencyFormatter.format(
-                        value,
-                      )} (avg 2000–2010)`,
+                      text: `${code} — ${currencyFormatter.format(value)} (avg 2000–2010)`,
                     });
                   }
                 }}
-                onMouseMove={(event) => {
+                onMouseMove={(event: React.MouseEvent<SVGPathElement>) => {
                   setTooltip((prev) => {
-                    if (prev) {
-                      return { ...prev, x: event.clientX, y: event.clientY };
-                    }
-                    return prev;
+                    if (!prev) return prev;
+                    return { ...prev, x: event.clientX, y: event.clientY };
                   });
                 }}
                 onMouseLeave={() => setTooltip(null)}
