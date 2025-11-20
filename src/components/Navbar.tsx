@@ -4,14 +4,15 @@
 
 import { useSession } from 'next-auth/react';
 import { usePathname } from 'next/navigation';
-import { Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
-import { BoxArrowRight, Lock, PersonFill, PersonPlusFill } from 'react-bootstrap-icons';
+// import { Container, Nav, Navbar, NavDropdown } from 'react-bootstrap';
+import { Container, Nav, Navbar } from 'react-bootstrap';
+// import { BoxArrowRight, Lock, PersonFill, PersonPlusFill } from 'react-bootstrap-icons';
 
 const NavBar: React.FC = () => {
-  const { data: session } = useSession();
-  const currentUser = session?.user?.email;
-  const userWithRole = session?.user as { email: string; randomKey: string };
-  const role = userWithRole?.randomKey;
+  // const { data: session } = useSession();
+  // const currentUser = session?.user?.email;
+  // const userWithRole = session?.user as { email: string; randomKey: string };
+  // const role = userWithRole?.randomKey;
   const pathName = usePathname();
   return (
     <Navbar bg="light" expand="lg">
@@ -27,7 +28,7 @@ const NavBar: React.FC = () => {
                     2010-2020
                   </Nav.Link>
           </Nav>
-          {/*<Nav>
+          {/* <Nav>
             {session ? (
               <NavDropdown id="login-dropdown" title={currentUser}>
                 <NavDropdown.Item id="login-dropdown-sign-out" href="/api/auth/signout">
@@ -51,7 +52,7 @@ const NavBar: React.FC = () => {
                 </NavDropdown.Item>
               </NavDropdown>
             )}
-            </Nav>*/}
+            </Nav> */}
         </Navbar.Collapse>
       </Container>
     </Navbar>

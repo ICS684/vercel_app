@@ -143,8 +143,7 @@ const USMap = () => {
                 for (const col of dateCols) {
                   const value = row[col];
                   if (value !== null && value !== undefined && value !== '') {
-                    const num =
-                      typeof value === 'number' ? value : parseFloat(String(value));
+                    const num = typeof value === 'number' ? value : parseFloat(String(value));
                     if (!Number.isNaN(num)) {
                       sum += num;
                       count += 1;
@@ -165,9 +164,8 @@ const USMap = () => {
               }
             }
 
-
             const stateAverages: StateValues = {};
-            for (const code in stateSums) {
+            for (const code of Object.keys(stateSums)) {
               stateAverages[code] = stateSums[code] / stateCounts[code];
             }
 
@@ -191,21 +189,19 @@ const USMap = () => {
   }, [stateValues]);
 
   const colorScale = useMemo(
-    () =>
-      scaleLinear<string>()
-        .domain([minVal, maxVal])
-        .range(['#e0ecf4', '#8856a7']),
-    [minVal, maxVal]
+    () => scaleLinear<string>()
+      .domain([minVal, maxVal])
+      .range(['#e0ecf4', '#8856a7']),
+    [minVal, maxVal],
   );
 
   const currencyFormatter = useMemo(
-    () =>
-      new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0,
-      }),
-    []
+    () => new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      maximumFractionDigits: 0,
+    }),
+    [],
   );
 
   const getStateCodeFromGeo = (geo: any): string | undefined => {
@@ -245,48 +241,44 @@ const USMap = () => {
       )}
 
       <ComposableMap
-        projection='geoAlbersUsa'
+        projection="geoAlbersUsa"
         style={{ width: '100%', height: 'auto' }}
       >
         <Geographies geography={geoUrl}>
-          {({ geographies }) =>
-            geographies.map((geo) => {
-              const code = getStateCodeFromGeo(geo);
-              const value = code ? stateValues[code] : undefined;
+          {({ geographies }) => geographies.map((geo) => {
+            const code = getStateCodeFromGeo(geo);
+            const value = code ? stateValues[code] : undefined;
 
-              return (
-                <Geography
-                  key={geo.rsmKey}
-                  geography={geo}
-                  fill={value !== undefined ? colorScale(value) : '#EEE'}
-                  style={{
-                    default: { stroke: '#333', strokeWidth: 0.5, outline: 'none' },
-                    hover: { fill: '#555', outline: 'none' },
-                    pressed: { fill: '#333', outline: 'none' },
-                  }}
-                  onMouseEnter={(event) => {
-                    if (code && value !== undefined) {
-                      setTooltip({
-                        x: event.clientX,
-                        y: event.clientY,
-                        text: `${code} — ${currencyFormatter.format(
-                          value
-                        )} (avg 2000–2010)`,
-                      });
-                    }
-                  }}
-                  onMouseMove={(event) => {
-                    setTooltip((prev) =>
-                      prev
-                        ? { ...prev, x: event.clientX, y: event.clientY }
-                        : prev
-                    );
-                  }}
-                  onMouseLeave={() => setTooltip(null)}
-                />
-              );
-            })
-          }
+            return (
+              <Geography
+                key={geo.rsmKey}
+                geography={geo}
+                fill={value !== undefined ? colorScale(value) : '#EEE'}
+                style={{
+                  default: { stroke: '#333', strokeWidth: 0.5, outline: 'none' },
+                  hover: { fill: '#555', outline: 'none' },
+                  pressed: { fill: '#333', outline: 'none' },
+                }}
+                onMouseEnter={(event) => {
+                  if (code && value !== undefined) {
+                    setTooltip({
+                      x: event.clientX,
+                      y: event.clientY,
+                      text: `${code} — ${currencyFormatter.format(
+                        value,
+                      )} (avg 2000–2010)`,
+                    });
+                  }
+                }}
+                onMouseMove={(event) => {
+                  setTooltip((prev) => prev
+                    ? { ...prev, x: event.clientX, y: event.clientY }
+                    : prev);
+                }}
+                onMouseLeave={() => setTooltip(null)}
+              />
+            );
+          })}
         </Geographies>
       </ComposableMap>
     </div>
