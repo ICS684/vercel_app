@@ -1,12 +1,12 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import { ComposableMap, Geographies, Geography } from "react-simple-maps";
-import { scaleLinear } from "d3-scale";
-import Papa from "papaparse";
+import { useEffect, useMemo, useState } from 'react';
+import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
+import { scaleLinear } from 'd3-scale';
+import Papa from 'papaparse';
 
-const geoUrl = "https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json";
-const DATA_URL = "/single_family_home.csv";
+const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
+const DATA_URL = '/single_family_home.csv';
 
 type Row = {
   State?: string;
@@ -17,57 +17,57 @@ type Row = {
 type StateValues = Record<string, number>;
 
 const nameToCode: Record<string, string> = {
-  Alabama: "AL",
-  Alaska: "AK",
-  Arizona: "AZ",
-  Arkansas: "AR",
-  California: "CA",
-  Colorado: "CO",
-  Connecticut: "CT",
-  Delaware: "DE",
-  "District of Columbia": "DC",
-  Florida: "FL",
-  Georgia: "GA",
-  Hawaii: "HI",
-  Idaho: "ID",
-  Illinois: "IL",
-  Indiana: "IN",
-  Iowa: "IA",
-  Kansas: "KS",
-  Kentucky: "KY",
-  Louisiana: "LA",
-  Maine: "ME",
-  Maryland: "MD",
-  Massachusetts: "MA",
-  Michigan: "MI",
-  Minnesota: "MN",
-  Mississippi: "MS",
-  Missouri: "MO",
-  Montana: "MT",
-  Nebraska: "NE",
-  Nevada: "NV",
-  "New Hampshire": "NH",
-  "New Jersey": "NJ",
-  "New Mexico": "NM",
-  "New York": "NY",
-  "North Carolina": "NC",
-  "North Dakota": "ND",
-  Ohio: "OH",
-  Oklahoma: "OK",
-  Oregon: "OR",
-  Pennsylvania: "PA",
-  "Rhode Island": "RI",
-  "South Carolina": "SC",
-  "South Dakota": "SD",
-  Tennessee: "TN",
-  Texas: "TX",
-  Utah: "UT",
-  Vermont: "VT",
-  Virginia: "VA",
-  Washington: "WA",
-  "West Virginia": "WV",
-  Wisconsin: "WI",
-  Wyoming: "WY",
+  Alabama: 'AL',
+  Alaska: 'AK',
+  Arizona: 'AZ',
+  Arkansas: 'AR',
+  California: 'CA',
+  Colorado: 'CO',
+  Connecticut: 'CT',
+  Delaware: 'DE',
+  'District of Columbia': 'DC',
+  Florida: 'FL',
+  Georgia: 'GA',
+  Hawaii: 'HI',
+  Idaho: 'ID',
+  Illinois: 'IL',
+  Indiana: 'IN',
+  Iowa: 'IA',
+  Kansas: 'KS',
+  Kentucky: 'KY',
+  Louisiana: 'LA',
+  Maine: 'ME',
+  Maryland: 'MD',
+  Massachusetts: 'MA',
+  Michigan: 'MI',
+  Minnesota: 'MN',
+  Mississippi: 'MS',
+  Missouri: 'MO',
+  Montana: 'MT',
+  Nebraska: 'NE',
+  Nevada: 'NV',
+  'New Hampshire': 'NH',
+  'New Jersey': 'NJ',
+  'New Mexico': 'NM',
+  'New York': 'NY',
+  'North Carolina': 'NC',
+  'North Dakota': 'ND',
+  Ohio: 'OH',
+  Oklahoma: 'OK',
+  Oregon: 'OR',
+  Pennsylvania: 'PA',
+  'Rhode Island': 'RI',
+  'South Carolina': 'SC',
+  'South Dakota': 'SD',
+  Tennessee: 'TN',
+  Texas: 'TX',
+  Utah: 'UT',
+  Vermont: 'VT',
+  Virginia: 'VA',
+  Washington: 'WA',
+  'West Virginia': 'WV',
+  Wisconsin: 'WI',
+  Wyoming: 'WY',
 };
 
 type TooltipState = {
@@ -101,14 +101,18 @@ const USMap = () => {
             const firstRow = rows[0];
             const keys = Object.keys(firstRow);
 
-            const stateCol = keys.includes("State")
-              ? "State"
-              : keys.includes("StateName")
-              ? "StateName"
-              : null;
+            let stateCol: string | null = null;
+
+            if (keys.includes('State')) {
+              stateCol = 'State';
+            } else if (keys.includes('StateName')) {
+              stateCol = 'StateName';
+            } else {
+              stateCol = null;
+            }
 
             if (!stateCol) {
-              console.error("No State or StateName column found in CSV");
+              console.error('No State or StateName column found in CSV');
               setLoading(false);
               return;
             }
@@ -120,7 +124,7 @@ const USMap = () => {
             });
 
             if (dateCols.length === 0) {
-              console.error("No date columns from 2000–2010 found");
+              console.error('No date columns from 2000–2010 found');
               setLoading(false);
               return;
             }
@@ -139,10 +143,10 @@ const USMap = () => {
 
               for (const col of dateCols) {
                 const value = row[col];
-                if (value === null || value === undefined || value === "") continue;
+                if (value === null || value === undefined || value === '') continue;
 
                 const num =
-                  typeof value === "number" ? value : parseFloat(String(value));
+                  typeof value === 'number' ? value : parseFloat(String(value));
                 if (!Number.isNaN(num)) {
                   sum += num;
                   count += 1;
@@ -170,7 +174,7 @@ const USMap = () => {
           },
         });
       } catch (err) {
-        console.error("Error loading CSV", err);
+        console.error('Error loading CSV', err);
         setLoading(false);
       }
     };
@@ -188,15 +192,15 @@ const USMap = () => {
     () =>
       scaleLinear<string>()
         .domain([minVal, maxVal])
-        .range(["#e0ecf4", "#8856a7"]),
+        .range(['#e0ecf4', '#8856a7']),
     [minVal, maxVal]
   );
 
   const currencyFormatter = useMemo(
     () =>
-      new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
+      new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
         maximumFractionDigits: 0,
       }),
     []
@@ -214,24 +218,24 @@ const USMap = () => {
   };
 
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: 'relative' }}>
       {loading && <p>Loading data…</p>}
 
       {/* Tooltip */}
       {tooltip && (
         <div
           style={{
-            position: "fixed",
+            position: 'fixed',
             left: tooltip.x + 12,
             top: tooltip.y + 12,
-            background: "rgba(0,0,0,0.8)",
-            color: "#fff",
-            padding: "4px 8px",
+            background: 'rgba(0,0,0,0.8)',
+            color: '#fff',
+            padding: '4px 8px',
             borderRadius: 4,
             fontSize: 12,
-            pointerEvents: "none",
+            pointerEvents: 'none',
             zIndex: 1000,
-            whiteSpace: "nowrap",
+            whiteSpace: 'nowrap',
           }}
         >
           {tooltip.text}
@@ -239,8 +243,8 @@ const USMap = () => {
       )}
 
       <ComposableMap
-        projection="geoAlbersUsa"
-        style={{ width: "100%", height: "auto" }}
+        projection='geoAlbersUsa'
+        style={{ width: '100%', height: 'auto' }}
       >
         <Geographies geography={geoUrl}>
           {({ geographies }) =>
@@ -252,11 +256,11 @@ const USMap = () => {
                 <Geography
                   key={geo.rsmKey}
                   geography={geo}
-                  fill={value !== undefined ? colorScale(value) : "#EEE"}
+                  fill={value !== undefined ? colorScale(value) : '#EEE'}
                   style={{
-                    default: { stroke: "#333", strokeWidth: 0.5, outline: "none" },
-                    hover: { fill: "#555", outline: "none" },
-                    pressed: { fill: "#333", outline: "none" },
+                    default: { stroke: '#333', strokeWidth: 0.5, outline: 'none' },
+                    hover: { fill: '#555', outline: 'none' },
+                    pressed: { fill: '#333', outline: 'none' },
                   }}
                   onMouseEnter={(event) => {
                     if (code && value !== undefined) {
