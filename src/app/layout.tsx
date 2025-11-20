@@ -1,10 +1,13 @@
 import type { Metadata } from 'next';
+import 'leaflet/dist/leaflet.css';
 import { Inter } from 'next/font/google';
 import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
-import Footer from '@/components/Footer';
-import NavBar from '@/components/Navbar';
-import Providers from './providers';
+import dynamic from 'next/dynamic';
+
+const NavBar = dynamic(() => import('@/components/Navbar'), { ssr: false });
+const Footer = dynamic(() => import('@/components/Footer'), { ssr: false });
+const Providers = dynamic(() => import('./providers'), { ssr: false });
 
 const inter = Inter({ subsets: ['latin'] });
 
