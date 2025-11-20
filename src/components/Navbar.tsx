@@ -27,7 +27,7 @@ const NavBar: React.FC = () => {
                     2010-2020
                   </Nav.Link>
           </Nav>
-          <Nav>
+          {/*<Nav>
             {session ? (
               <NavDropdown id="login-dropdown" title={currentUser}>
                 <NavDropdown.Item id="login-dropdown-sign-out" href="/api/auth/signout">
@@ -51,7 +51,7 @@ const NavBar: React.FC = () => {
                 </NavDropdown.Item>
               </NavDropdown>
             )}
-          </Nav>
+            </Nav>*/}
         </Navbar.Collapse>
       </Container>
     </Navbar>
