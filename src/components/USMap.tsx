@@ -272,9 +272,12 @@ const USMap = () => {
                   }
                 }}
                 onMouseMove={(event) => {
-                  setTooltip((prev) => prev
-                    ? { ...prev, x: event.clientX, y: event.clientY }
-                    : prev);
+                  setTooltip((prev) => {
+                    if (prev) {
+                      return { ...prev, x: event.clientX, y: event.clientY };
+                    }
+                    return prev;
+                  });
                 }}
                 onMouseLeave={() => setTooltip(null)}
               />
