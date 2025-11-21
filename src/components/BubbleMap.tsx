@@ -54,7 +54,7 @@ const BubbleMap = () => {
         const res = await fetch(DATA_URL);
         const text = await res.text();
 
-        Papa.parse(text, {
+        Papa.parse<Row>(text, {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
@@ -122,10 +122,7 @@ const BubbleMap = () => {
               for (const col of dateCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
-                  const num =
-                    typeof value === 'number'
-                      ? value
-                      : parseFloat(String(value));
+                  const num = typeof value === 'number' ? value : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
@@ -159,8 +156,7 @@ const BubbleMap = () => {
                   && Math.abs(zip.lon - group.lon) <= threshold
                 ) {
                   // Update group averages (running mean)
-                  const totalPrice =
-                    group.avgPrice * group.count + zip.avgPrice;
+                  const totalPrice = group.avgPrice * group.count + zip.avgPrice;
                   const totalLat = group.lat * group.count + zip.lat;
                   const totalLon = group.lon * group.count + zip.lon;
                   group.count += 1;
@@ -192,7 +188,7 @@ const BubbleMap = () => {
       }
     };
 
-    void loadData();
+    loadData();
   }, [startYear, endYear]);
 
   if (loading) {
@@ -259,33 +255,39 @@ const BubbleMap = () => {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <label htmlFor="startYear">Start Year:</label>
-        <select
-          id="startYear"
-          value={startYear}
-          onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
-        >
-          {yearOptions.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-        <label htmlFor="endYear" style={{ marginLeft: 20 }}>
-          End Year:
+        {/* Start year */}
+        <label style={{ marginRight: 12 }}>
+          Start Year:
+          <select
+            value={startYear}
+            onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
+            style={{ marginLeft: 8 }}
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
         </label>
-        <select
-          id="endYear"
-          value={endYear}
-          onChange={(e) => setEndYear(parseInt(e.target.value, 10))}
-        >
-          {yearOptions.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
+
+        {/* End year */}
+        <label style={{ marginLeft: 20 }}>
+          End Year:
+          <select
+            value={endYear}
+            onChange={(e) => setEndYear(parseInt(e.target.value, 10))}
+            style={{ marginLeft: 8 }}
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
+
       <Plot
         data={data}
         layout={layout as any}

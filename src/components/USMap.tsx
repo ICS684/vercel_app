@@ -6,7 +6,7 @@ import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
 // @ts-ignore
 import { scaleLinear } from 'd3-scale';
 // @ts-ignore
-import Papa from 'papaparse';
+import Papa, { type ParseResult } from 'papaparse';
 
 const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
 const DATA_URL = '/single_family_home.csv';
@@ -90,11 +90,11 @@ const USMap = () => {
         const res = await fetch(DATA_URL);
         const text = await res.text();
 
-        Papa.parse(text, {
+        Papa.parse<Row>(text, {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
-          complete: (results: { data: never[]; }) => {
+          complete: (results: ParseResult<Row>) => {
             const rows = results.data || [];
             if (rows.length === 0) {
               setLoading(false);
