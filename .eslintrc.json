@@ -21,5 +21,13 @@
     "react/jsx-props-no-spreading": "off",
     "react/one-expression-per-line": "off",
     "react/react-in-jsx-scope": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/data/zipLocations.ts"],
+      "rules": {
+        "all": "off"
+      }
+    }
+  ]
 }

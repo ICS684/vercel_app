@@ -2,7 +2,6 @@ import { Col, Container, Row } from 'react-bootstrap';
 import USMap from '../components/USMap';
 import BubbleMap from '../components/BubbleMap';
 
-
 /** The Home page. */
 const Home = () => (
   <main>

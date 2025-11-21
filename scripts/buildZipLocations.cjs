@@ -92,7 +92,7 @@ function main() {
 
   for (const z of sortedZips) {
     const { lat, lon } = zipLocationMap[z];
-    out += `  "${z}": { lat: ${lat}, lon: ${lon} },\n`;
+    out += `  '${z}': { lat: ${lat}, lon: ${lon} },\n`;
   }
 
   out += '};\n';

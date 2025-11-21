@@ -1,32 +1,30 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-// @ts-ignore
-import Papa from 'papaparse';
-// @ts-ignore
-import { scaleLinear } from 'd3-scale';
+import { useEffect, useState, type ComponentType } from 'react';
 import dynamic from 'next/dynamic';
+import Papa, { type ParseResult } from 'papaparse';
+import { scaleLinear } from 'd3-scale';
 
-import { zipLocationMap } from '../data/zipLocations'; // <-- add this
+import { zipLocationMap } from '../data/zipLocations';
 
 // Dynamically import Plotly since it requires the browser
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
-});
+}) as unknown as ComponentType<any>;
 
 const DATA_URL = '/single_family_home.csv';
 
 type Row = {
   RegionID?: string;
   SizeRank?: string;
-  RegionName?: string | number; // ZIP here
-  RegionType?: string;          // e.g. 'zip'
+  RegionName?: string | number;
+  RegionType?: string;
   StateName?: string;
   State?: string;
   City?: string;
   Metro?: string;
   CountyName?: string;
-  [key: string]: any;           // all the date columns
+  [key: string]: any;
 };
 
 type ZipData = {
@@ -60,7 +58,7 @@ const BubbleMap = () => {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
-          complete: (results) => {
+          complete: (results: ParseResult<Row>) => {
             const rows = results.data || [];
             console.log('Parsed data:', rows.length, 'rows');
             if (rows.length === 0) {
@@ -80,7 +78,7 @@ const BubbleMap = () => {
             console.log(
               'Date columns found:',
               dateCols.length,
-              dateCols.slice(0, 5)
+              dateCols.slice(0, 5),
             );
 
             if (dateCols.length === 0) {
@@ -95,7 +93,7 @@ const BubbleMap = () => {
               // 1. Make sure RegionType is 'zip'
               const regionType = row.RegionType;
               if (!regionType || regionType.toLowerCase() !== 'zip') {
-                // Not a ZIP-level row; skip
+                // eslint-disable-next-line no-continue
                 continue;
               }
 
@@ -103,6 +101,7 @@ const BubbleMap = () => {
               const zip = row.RegionName;
               if (zip === undefined || zip === null || zip === '') {
                 console.log('Skipping row: missing RegionName / ZIP', { row });
+                // eslint-disable-next-line no-continue
                 continue;
               }
               const zipStr = String(zip);
@@ -111,6 +110,7 @@ const BubbleMap = () => {
               const loc = zipLocationMap[zipStr];
               if (!loc) {
                 console.log('Skipping ZIP with no lat/lon mapping:', zipStr);
+                // eslint-disable-next-line no-continue
                 continue;
               }
               const { lat, lon } = loc;
@@ -123,7 +123,9 @@ const BubbleMap = () => {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
                   const num =
-                    typeof value === 'number' ? value : parseFloat(String(value));
+                    typeof value === 'number'
+                      ? value
+                      : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
@@ -153,11 +155,12 @@ const BubbleMap = () => {
               let foundGroup = false;
               for (const group of groups) {
                 if (
-                  Math.abs(zip.lat - group.lat) <= threshold &&
-                  Math.abs(zip.lon - group.lon) <= threshold
+                  Math.abs(zip.lat - group.lat) <= threshold
+                  && Math.abs(zip.lon - group.lon) <= threshold
                 ) {
                   // Update group averages (running mean)
-                  const totalPrice = group.avgPrice * group.count + zip.avgPrice;
+                  const totalPrice =
+                    group.avgPrice * group.count + zip.avgPrice;
                   const totalLat = group.lat * group.count + zip.lat;
                   const totalLon = group.lon * group.count + zip.lon;
                   group.count += 1;
@@ -189,7 +192,7 @@ const BubbleMap = () => {
       }
     };
 
-    loadData();
+    void loadData();
   }, [startYear, endYear]);
 
   if (loading) {
@@ -206,7 +209,7 @@ const BubbleMap = () => {
   const lons = groupedData.map((g) => g.lon);
   const sizes = groupedData.map((g) => g.avgPrice);
   const texts = groupedData.map(
-    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>ZIPs in group: ${g.count}`
+    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>ZIPs in group: ${g.count}`,
   );
 
   const minSize = Math.min(...sizes);
@@ -256,38 +259,38 @@ const BubbleMap = () => {
   return (
     <div>
       <div style={{ marginBottom: 20 }}>
-        <label>
-          Start Year:{' '}
-          <select
-            value={startYear}
-            onChange={(e) => setStartYear(parseInt(e.target.value))}
-          >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
+        <label htmlFor="startYear">Start Year:</label>
+        <select
+          id="startYear"
+          value={startYear}
+          onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
+        >
+          {yearOptions.map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="endYear" style={{ marginLeft: 20 }}>
+          End Year:
         </label>
-        <label style={{ marginLeft: 20 }}>
-          End Year:{' '}
-          <select
-            value={endYear}
-            onChange={(e) => setEndYear(parseInt(e.target.value))}
-          >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </label>
+        <select
+          id="endYear"
+          value={endYear}
+          onChange={(e) => setEndYear(parseInt(e.target.value, 10))}
+        >
+          {yearOptions.map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </select>
       </div>
       <Plot
         data={data}
         layout={layout as any}
         style={{ width: '100%', height: '100%' }}
-        useResizeHandler={true}
+        useResizeHandler
         config={{ responsive: true }}
       />
     </div>
