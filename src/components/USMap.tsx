@@ -90,7 +90,7 @@ const USMap = () => {
         const res = await fetch(DATA_URL);
         const text = await res.text();
 
-        Papa.parse<Row>(text, {
+        Papa.parse(text, {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
