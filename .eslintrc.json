@@ -8,9 +8,11 @@
   "rules": {
     "arrow-parens": "off",
     "func-names": "off",
+    "jsx-a11y/label-has-associated-control": "off",
     "linebreak-style": "off",
     "max-len": ["error", 120],
     "no-console": "off",
+    "no-continue": "off",
     "no-plusplus": "off",
     "no-restricted-syntax": "off",
     "no-return-assign": "off",
@@ -21,5 +23,13 @@
     "react/jsx-props-no-spreading": "off",
     "react/one-expression-per-line": "off",
     "react/react-in-jsx-scope": "off"
-  }
+  },
+  "overrides": [
+    {
+      "files": ["src/data/zipLocations.ts"],
+      "rules": {
+        "all": "off"
+      }
+    }
+  ]
 }
