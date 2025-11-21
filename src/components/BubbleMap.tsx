@@ -41,6 +41,17 @@ type GroupedData = {
   count: number;
 };
 
+type BinAgg = {
+  sumPrice: number;
+  sumLat: number;
+  sumLon: number;
+  count: number;
+};
+
+// bin sizes in degrees – tweak these to change density
+const LAT_BIN_SIZE = 2;
+const LON_BIN_SIZE = 2;
+
 const BubbleMap = () => {
   const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
   const [loading, setLoading] = useState(true);
@@ -144,41 +155,43 @@ const BubbleMap = () => {
 
             console.log('ZipData entries created:', zipData.length);
 
-            // Group nearby ZIPs in lat/lon space
-            const groups: GroupedData[] = [];
-            const threshold = 0.01; // ~ grouping radius, tweak later
+            // === NEW: histogram-style binning in lat/lon ===
+            const binMap = new Map<string, BinAgg>();
 
             for (const zip of zipData) {
-              let foundGroup = false;
-              for (const group of groups) {
-                if (
-                  Math.abs(zip.lat - group.lat) <= threshold
-                  && Math.abs(zip.lon - group.lon) <= threshold
-                ) {
-                  // Update group averages (running mean)
-                  const totalPrice = group.avgPrice * group.count + zip.avgPrice;
-                  const totalLat = group.lat * group.count + zip.lat;
-                  const totalLon = group.lon * group.count + zip.lon;
-                  group.count += 1;
-                  group.avgPrice = totalPrice / group.count;
-                  group.lat = totalLat / group.count;
-                  group.lon = totalLon / group.count;
-                  foundGroup = true;
-                  break;
-                }
-              }
-              if (!foundGroup) {
-                groups.push({
-                  lat: zip.lat,
-                  lon: zip.lon,
-                  avgPrice: zip.avgPrice,
+              const latBin = Math.floor(zip.lat / LAT_BIN_SIZE);
+              const lonBin = Math.floor(zip.lon / LON_BIN_SIZE);
+              const key = `${latBin}_${lonBin}`;
+
+              const existing = binMap.get(key);
+              if (existing) {
+                existing.sumPrice += zip.avgPrice;
+                existing.sumLat += zip.lat;
+                existing.sumLon += zip.lon;
+                existing.count += 1;
+              } else {
+                binMap.set(key, {
+                  sumPrice: zip.avgPrice,
+                  sumLat: zip.lat,
+                  sumLon: zip.lon,
                   count: 1,
                 });
               }
             }
 
+            const groups: GroupedData[] = [];
+            for (const agg of binMap.values()) {
+              if (agg.count === 0) continue;
+              groups.push({
+                lat: agg.sumLat / agg.count,
+                lon: agg.sumLon / agg.count,
+                avgPrice: agg.sumPrice / agg.count,
+                count: agg.count,
+              });
+            }
+
             setGroupedData(groups);
-            console.log('Grouped data:', groups.length, 'groups');
+            console.log('Grouped data (bins):', groups.length, 'groups');
             setLoading(false);
           },
         });
