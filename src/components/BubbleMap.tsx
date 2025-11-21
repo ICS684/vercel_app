@@ -1,104 +1,57 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-// @ts-ignore
-import { ComposableMap, Geographies, Geography } from 'react-simple-maps';
-// @ts-ignore
-import { scaleLinear } from 'd3-scale';
+import { useEffect, useState } from 'react';
 // @ts-ignore
 import Papa from 'papaparse';
-
+// @ts-ignore
+import { scaleLinear } from 'd3-scale';
 import dynamic from 'next/dynamic';
+
+import { zipLocationMap } from '../data/zipLocations'; // <-- add this
 
 // Dynamically import Plotly since it requires the browser
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
 });
 
-const geoUrl = 'https://cdn.jsdelivr.net/npm/us-atlas@3/states-10m.json';
 const DATA_URL = '/single_family_home.csv';
 
 type Row = {
-  State?: string;
+  RegionID?: string;
+  SizeRank?: string;
+  RegionName?: string | number; // ZIP here
+  RegionType?: string;          // e.g. 'zip'
   StateName?: string;
-  [key: string]: any;
+  State?: string;
+  City?: string;
+  Metro?: string;
+  CountyName?: string;
+  [key: string]: any;           // all the date columns
 };
 
-type StateValues = Record<string, number>;
-
-const nameToCode: Record<string, string> = {
-  Alabama: 'AL',
-  Alaska: 'AK',
-  Arizona: 'AZ',
-  Arkansas: 'AR',
-  California: 'CA',
-  Colorado: 'CO',
-  Connecticut: 'CT',
-  Delaware: 'DE',
-  'District of Columbia': 'DC',
-  Florida: 'FL',
-  Georgia: 'GA',
-  Hawaii: 'HI',
-  Idaho: 'ID',
-  Illinois: 'IL',
-  Indiana: 'IN',
-  Iowa: 'IA',
-  Kansas: 'KS',
-  Kentucky: 'KY',
-  Louisiana: 'LA',
-  Maine: 'ME',
-  Maryland: 'MD',
-  Massachusetts: 'MA',
-  Michigan: 'MI',
-  Minnesota: 'MN',
-  Mississippi: 'MS',
-  Missouri: 'MO',
-  Montana: 'MT',
-  Nebraska: 'NE',
-  Nevada: 'NV',
-  'New Hampshire': 'NH',
-  'New Jersey': 'NJ',
-  'New Mexico': 'NM',
-  'New York': 'NY',
-  'North Carolina': 'NC',
-  'North Dakota': 'ND',
-  Ohio: 'OH',
-  Oklahoma: 'OK',
-  Oregon: 'OR',
-  Pennsylvania: 'PA',
-  'Rhode Island': 'RI',
-  'South Carolina': 'SC',
-  'South Dakota': 'SD',
-  Tennessee: 'TN',
-  Texas: 'TX',
-  Utah: 'UT',
-  Vermont: 'VT',
-  Virginia: 'VA',
-  Washington: 'WA',
-  'West Virginia': 'WV',
-  Wisconsin: 'WI',
-  Wyoming: 'WY',
+type ZipData = {
+  zip: string;
+  lat: number;
+  lon: number;
+  avgPrice: number;
 };
 
-const codes : Array<string> = [];
-
-Object.values(nameToCode).forEach((value) => {
-    codes.push(value);
-})
-
-type TooltipState = {
-  x: number;
-  y: number;
-  text: string;
-} | null;
+type GroupedData = {
+  lat: number;
+  lon: number;
+  avgPrice: number;
+  count: number;
+};
 
 const BubbleMap = () => {
-  const [stateValues, setStateValues] = useState<StateValues>({});
+  const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
   const [loading, setLoading] = useState(true);
-  const [tooltip, setTooltip] = useState<TooltipState>(null);
+  const [startYear, setStartYear] = useState(2000);
+  const [endYear, setEndYear] = useState(2010);
 
   useEffect(() => {
     const loadData = async () => {
+      setLoading(true);
       try {
         const res = await fetch(DATA_URL);
         const text = await res.text();
@@ -107,37 +60,28 @@ const BubbleMap = () => {
           header: true,
           dynamicTyping: true,
           skipEmptyLines: true,
-          complete: (results: { data: never[]; }) => {
+          complete: (results) => {
             const rows = results.data || [];
+            console.log('Parsed data:', rows.length, 'rows');
             if (rows.length === 0) {
               setLoading(false);
               return;
             }
 
-            const firstRow = rows[0];
-            const keys = Object.keys(firstRow);
+            const keys = Object.keys(rows[0]);
 
-            let stateCol: string | null = null;
-
-            if (keys.includes('State')) {
-              stateCol = 'State';
-            } else if (keys.includes('StateName')) {
-              stateCol = 'StateName';
-            } else {
-              stateCol = null;
-            }
-
-            if (!stateCol) {
-              console.error('No State or StateName column found in CSV');
-              setLoading(false);
-              return;
-            }
-
+            // Pick date columns between startYear and endYear
             const dateCols = keys.filter((k) => {
               if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return false;
               const year = parseInt(k.slice(0, 4), 10);
-              return year >= 2000 && year <= 2010;
+              return year >= startYear && year <= endYear;
             });
+
+            console.log(
+              'Date columns found:',
+              dateCols.length,
+              dateCols.slice(0, 5)
+            );
 
             if (dateCols.length === 0) {
               console.error('No date columns from 2000–2010 found');
@@ -145,47 +89,97 @@ const BubbleMap = () => {
               return;
             }
 
-            const stateSums: Record<string, number> = {};
-            const stateCounts: Record<string, number> = {};
+            const zipData: ZipData[] = [];
 
             for (const row of rows) {
-              const stateRaw = (row as any)[stateCol];
-              if (stateRaw) {
-                const stateCode = String(stateRaw).trim();
+              // 1. Make sure RegionType is 'zip'
+              const regionType = row.RegionType;
+              if (!regionType || regionType.toLowerCase() !== 'zip') {
+                // Not a ZIP-level row; skip
+                continue;
+              }
 
-                let sum = 0;
-                let count = 0;
+              // 2. Get ZIP from RegionName
+              const zip = row.RegionName;
+              if (zip === undefined || zip === null || zip === '') {
+                console.log('Skipping row: missing RegionName / ZIP', { row });
+                continue;
+              }
+              const zipStr = String(zip);
 
-                for (const col of dateCols) {
-                  const value = row[col];
-                  if (value !== null && value !== undefined && value !== '') {
-                    const num = typeof value === 'number' ? value : parseFloat(String(value));
-                    if (!Number.isNaN(num)) {
-                      sum += num;
-                      count += 1;
-                    }
+              // 3. Lookup lat/lon from your ZIP → location map
+              const loc = zipLocationMap[zipStr];
+              if (!loc) {
+                console.log('Skipping ZIP with no lat/lon mapping:', zipStr);
+                continue;
+              }
+              const { lat, lon } = loc;
+
+              // 4. Compute average price over selected date columns
+              let sum = 0;
+              let count = 0;
+
+              for (const col of dateCols) {
+                const value = row[col];
+                if (value !== null && value !== undefined && value !== '') {
+                  const num =
+                    typeof value === 'number' ? value : parseFloat(String(value));
+                  if (!Number.isNaN(num)) {
+                    sum += num;
+                    count += 1;
+                  } else {
+                    // console.log('Invalid value for col', col, ':', value);
                   }
+                } else {
+                  // console.log('Null/undefined/empty value for col', col, ':', value);
                 }
+              }
 
-                if (count > 0) {
-                  const zipAvg = sum / count;
-
-                  if (!(stateCode in stateSums)) {
-                    stateSums[stateCode] = 0;
-                    stateCounts[stateCode] = 0;
-                  }
-                  stateSums[stateCode] += zipAvg;
-                  stateCounts[stateCode] += 1;
-                }
+              if (count > 0) {
+                const avgPrice = sum / count;
+                zipData.push({ zip: zipStr, lat, lon, avgPrice });
+              } else {
+                console.log('No valid values for ZIP', zipStr);
               }
             }
 
-            const stateAverages: StateValues = {};
-            for (const code of Object.keys(stateSums)) {
-              stateAverages[code] = stateSums[code] / stateCounts[code];
+            console.log('ZipData entries created:', zipData.length);
+
+            // Group nearby ZIPs in lat/lon space
+            const groups: GroupedData[] = [];
+            const threshold = 0.01; // ~ grouping radius, tweak later
+
+            for (const zip of zipData) {
+              let foundGroup = false;
+              for (const group of groups) {
+                if (
+                  Math.abs(zip.lat - group.lat) <= threshold &&
+                  Math.abs(zip.lon - group.lon) <= threshold
+                ) {
+                  // Update group averages (running mean)
+                  const totalPrice = group.avgPrice * group.count + zip.avgPrice;
+                  const totalLat = group.lat * group.count + zip.lat;
+                  const totalLon = group.lon * group.count + zip.lon;
+                  group.count += 1;
+                  group.avgPrice = totalPrice / group.count;
+                  group.lat = totalLat / group.count;
+                  group.lon = totalLon / group.count;
+                  foundGroup = true;
+                  break;
+                }
+              }
+              if (!foundGroup) {
+                groups.push({
+                  lat: zip.lat,
+                  lon: zip.lon,
+                  avgPrice: zip.avgPrice,
+                  count: 1,
+                });
+              }
             }
 
-            setStateValues(stateAverages);
+            setGroupedData(groups);
+            console.log('Grouped data:', groups.length, 'groups');
             setLoading(false);
           },
         });
@@ -196,100 +190,108 @@ const BubbleMap = () => {
     };
 
     loadData();
-  }, []);
+  }, [startYear, endYear]);
 
-  const [minVal, maxVal] = useMemo(() => {
-    const vals = Object.values(stateValues);
-    if (vals.length === 0) return [0, 1];
-    return [Math.min(...vals), Math.max(...vals)];
-  }, [stateValues]);
-
-  const colorScale = useMemo(
-    () => scaleLinear<string>()
-      .domain([minVal, maxVal])
-      .range(['#e0ecf4', '#8856a7']),
-    [minVal, maxVal],
-  );
-
-  const currencyFormatter = useMemo(
-    () => new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      maximumFractionDigits: 0,
-    }),
-    [],
-  );
-
-  const getStateCodeFromGeo = (geo: any): string | undefined => {
-    /* eslint-disable react/prop-types */
-    const props = geo.properties || {};
-    const postal = props.postal || props.STUSPS;
-    if (postal) return postal;
-
-    const name = props.name || props.NAME;
-    if (name && nameToCode[name]) return nameToCode[name];
-
-    return undefined;
-  };
-
-  interface GeoProperties {
-    NAME?: string;
-    postal?: string;
-    STUSPS?: string;
-
-    [key: string]: unknown;
+  if (loading) {
+    return <div>Loading...</div>;
   }
 
-  interface GeoFeature {
-    id?: string | number;
-    rsmKey: string;
-    properties?: GeoProperties;
-    geometry?: {
-      type: string;
-      coordinates: number[] | number[][] | number[][][];
-    };
+  if (groupedData.length === 0) {
+    return <div>No data available</div>;
   }
 
-  let data = [{
-    type: 'scattergeo',
-    mode: 'markers',
-    locations: codes,
-    marker: {
-        size: new Array(codes.length).fill(300),
-        color: new Array(codes.length).fill(20),
-        cmin: 0,
-        cmax: 600,
-        colorscale: 'Greens',
+  const yearOptions = Array.from({ length: 11 }, (_, i) => 2000 + i); // 2000–2010
+
+  const lats = groupedData.map((g) => g.lat);
+  const lons = groupedData.map((g) => g.lon);
+  const sizes = groupedData.map((g) => g.avgPrice);
+  const texts = groupedData.map(
+    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>ZIPs in group: ${g.count}`
+  );
+
+  const minSize = Math.min(...sizes);
+  const maxSize = Math.max(...sizes);
+
+  const sizeScale = scaleLinear()
+    .domain([minSize, maxSize])
+    .range([5, 50]); // bubble radius range
+
+  const data = [
+    {
+      type: 'scattergeo',
+      locationmode: 'USA-states',
+      lat: lats,
+      lon: lons,
+      text: texts,
+      hoverinfo: 'text',
+      marker: {
+        size: sizes.map((s) => sizeScale(s)),
+        color: sizes,
+        cmin: minSize,
+        cmax: maxSize,
+        colorscale: 'Cividis',
         colorbar: {
-            title: {text: 'Price'},
-            ticksuffix: ',000',
-            tickprefix: '$',
-            showticksuccix: 'last'
+          title: { text: 'Avg Price' },
+          tickprefix: '$',
         },
         line: {
-            color: 'black'
+          color: 'black',
         },
-        name: 'lobron jared'
+        opacity: 0.8,
+      },
+    },
+  ];
 
-    }
-  }]
-
-  var layout = {
-    'geo': {
-        'scope': 'usa',
-        'resolution': 50
-    }
-  }
+  const layout = {
+    geo: {
+      scope: 'usa',
+      resolution: 50,
+      showland: true,
+      landcolor: '#f0f0f0',
+    },
+    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by ZIP Groups`,
+    margin: { l: 0, r: 0, t: 40, b: 0 },
+  };
 
   return (
-    <Plot 
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <label>
+          Start Year:{' '}
+          <select
+            value={startYear}
+            onChange={(e) => setStartYear(parseInt(e.target.value))}
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ marginLeft: 20 }}>
+          End Year:{' '}
+          <select
+            value={endYear}
+            onChange={(e) => setEndYear(parseInt(e.target.value))}
+          >
+            {yearOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <Plot
         data={data}
-        layout={layout}
-        style={{width: '100%', height: '100%'}}
+        layout={layout as any}
+        style={{ width: '100%', height: '100%' }}
         useResizeHandler={true}
-        config={{responsive: true}}
-    />
-  )
+        config={{ responsive: true }}
+      />
+    </div>
+  );
 };
 
 export default BubbleMap;
