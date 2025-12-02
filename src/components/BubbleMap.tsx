@@ -230,8 +230,7 @@ const BubbleMap = () => {
 
   const data = [
     {
-      type: 'scattergeo',
-      locationmode: 'USA-states',
+      type: 'scattermapbox',
       lat: lats,
       lon: lons,
       text: texts,
@@ -246,20 +245,16 @@ const BubbleMap = () => {
           title: { text: 'Avg Price' },
           tickprefix: '$',
         },
-        line: {
-          color: 'black',
-        },
         opacity: 0.8,
       },
     },
   ];
 
   const layout = {
-    geo: {
-      scope: 'usa',
-      resolution: 50,
-      showland: true,
-      landcolor: '#f0f0f0',
+    mapbox: {
+      style: 'open-street-map', // no token needed
+      center: { lat: 39, lon: -98 }, // roughly center of the US
+      zoom: 3,
     },
     title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by ZIP Groups`,
     margin: { l: 0, r: 0, t: 40, b: 0 },
