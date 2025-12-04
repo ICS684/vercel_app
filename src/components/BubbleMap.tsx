@@ -105,10 +105,7 @@ const BubbleMap = () => {
               for (const col of selectedYearCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
-                  const num =
-                    typeof value === 'number'
-                      ? value
-                      : parseFloat(String(value));
+                  const num = typeof value === 'number' ? value : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
