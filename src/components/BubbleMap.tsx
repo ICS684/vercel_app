@@ -5,52 +5,25 @@ import dynamic from 'next/dynamic';
 import Papa, { type ParseResult } from 'papaparse';
 import { scaleLinear } from 'd3-scale';
 
-import { zipLocationMap } from '../data/zipLocations';
-
 // Dynamically import Plotly since it requires the browser
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
 }) as unknown as ComponentType<any>;
 
-const DATA_URL = '/single_family_home.csv';
+// Use the new, already-binned CSV
+const DATA_URL = '/binned_year_averages.csv';
 
 type Row = {
-  RegionID?: string;
-  SizeRank?: string;
-  RegionName?: string | number;
-  RegionType?: string;
-  StateName?: string;
-  State?: string;
-  City?: string;
-  Metro?: string;
-  CountyName?: string;
-  [key: string]: any;
-};
-
-type ZipData = {
-  zip: string;
-  lat: number;
-  lon: number;
-  avgPrice: number;
+  lat_bin?: number | string;
+  lon_bin?: number | string;
+  [key: string]: any; // year columns like "2000", "2001", ...
 };
 
 type GroupedData = {
   lat: number;
   lon: number;
   avgPrice: number;
-  count: number;
 };
-
-type BinAgg = {
-  sumPrice: number;
-  sumLat: number;
-  sumLon: number;
-  count: number;
-};
-
-// bin sizes in degrees – tweak these to change density
-const LAT_BIN_SIZE = 2;
-const LON_BIN_SIZE = 2;
 
 const BubbleMap = () => {
   const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
@@ -77,121 +50,84 @@ const BubbleMap = () => {
               return;
             }
 
-            const keys = Object.keys(rows[0]);
+            const keys = Object.keys(rows[0] ?? {});
 
-            // Pick date columns between startYear and endYear
-            const dateCols = keys.filter((k) => {
-              if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return false;
-              const year = parseInt(k.slice(0, 4), 10);
+            // Year columns are simple 4-digit strings: "2000", "2001", ...
+            const yearCols = keys.filter((k) => /^\d{4}$/.test(k));
+            console.log('Year columns:', yearCols);
+
+            const selectedYearCols = yearCols.filter((k) => {
+              const year = parseInt(k, 10);
               return year >= startYear && year <= endYear;
             });
 
             console.log(
-              'Date columns found:',
-              dateCols.length,
-              dateCols.slice(0, 5),
+              'Selected year columns:',
+              selectedYearCols.length,
+              selectedYearCols,
             );
 
-            if (dateCols.length === 0) {
-              console.error('No date columns from 2000–2010 found');
+            if (selectedYearCols.length === 0) {
+              console.error('No year columns found in selected range');
+              setGroupedData([]);
               setLoading(false);
               return;
             }
 
-            const zipData: ZipData[] = [];
+            const groups: GroupedData[] = [];
 
             for (const row of rows) {
-              // 1. Make sure RegionType is 'zip'
-              const regionType = row.RegionType;
-              if (!regionType || regionType.toLowerCase() !== 'zip') {
+              const latBin = row.lat_bin;
+              const lonBin = row.lon_bin;
+
+              if (latBin === undefined || lonBin === undefined) {
+                console.log('Skipping row: missing lat_bin or lon_bin', row);
                 // eslint-disable-next-line no-continue
                 continue;
               }
 
-              // 2. Get ZIP from RegionName
-              const zip = row.RegionName;
-              if (zip === undefined || zip === null || zip === '') {
-                console.log('Skipping row: missing RegionName / ZIP', { row });
+              const latBinNum = Number(latBin);
+              const lonBinNum = Number(lonBin);
+
+              if (Number.isNaN(latBinNum) || Number.isNaN(lonBinNum)) {
+                console.log('Skipping row: non-numeric lat_bin/lon_bin', row);
                 // eslint-disable-next-line no-continue
                 continue;
               }
-              const zipStr = String(zip);
 
-              // 3. Lookup lat/lon from your ZIP → location map
-              const loc = zipLocationMap[zipStr];
-              if (!loc) {
-                console.log('Skipping ZIP with no lat/lon mapping:', zipStr);
-                // eslint-disable-next-line no-continue
-                continue;
-              }
-              const { lat, lon } = loc;
+              // Place bubble at the center of the 1°×1° bin
+              const latCenter = latBinNum + 0.5;
+              const lonCenter = lonBinNum + 0.5;
 
-              // 4. Compute average price over selected date columns
               let sum = 0;
               let count = 0;
 
-              for (const col of dateCols) {
+              for (const col of selectedYearCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
-                  const num = typeof value === 'number' ? value : parseFloat(String(value));
+                  const num =
+                    typeof value === 'number'
+                      ? value
+                      : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
-                  } else {
-                    // console.log('Invalid value for col', col, ':', value);
                   }
-                } else {
-                  // console.log('Null/undefined/empty value for col', col, ':', value);
                 }
               }
 
               if (count > 0) {
                 const avgPrice = sum / count;
-                zipData.push({ zip: zipStr, lat, lon, avgPrice });
-              } else {
-                console.log('No valid values for ZIP', zipStr);
-              }
-            }
-
-            console.log('ZipData entries created:', zipData.length);
-
-            // === NEW: histogram-style binning in lat/lon ===
-            const binMap = new Map<string, BinAgg>();
-
-            for (const zip of zipData) {
-              const latBin = Math.floor(zip.lat / LAT_BIN_SIZE);
-              const lonBin = Math.floor(zip.lon / LON_BIN_SIZE);
-              const key = `${latBin}_${lonBin}`;
-
-              const existing = binMap.get(key);
-              if (existing) {
-                existing.sumPrice += zip.avgPrice;
-                existing.sumLat += zip.lat;
-                existing.sumLon += zip.lon;
-                existing.count += 1;
-              } else {
-                binMap.set(key, {
-                  sumPrice: zip.avgPrice,
-                  sumLat: zip.lat,
-                  sumLon: zip.lon,
-                  count: 1,
+                groups.push({
+                  lat: latCenter,
+                  lon: lonCenter,
+                  avgPrice,
                 });
               }
             }
 
-            const groups: GroupedData[] = [];
-            for (const agg of binMap.values()) {
-              if (agg.count === 0) continue;
-              groups.push({
-                lat: agg.sumLat / agg.count,
-                lon: agg.sumLon / agg.count,
-                avgPrice: agg.sumPrice / agg.count,
-                count: agg.count,
-              });
-            }
-
+            console.log('Binned rows used as bubbles:', groups.length);
             setGroupedData(groups);
-            console.log('Grouped data (bins):', groups.length, 'groups');
             setLoading(false);
           },
         });
@@ -212,13 +148,14 @@ const BubbleMap = () => {
     return <div>No data available</div>;
   }
 
-  const yearOptions = Array.from({ length: 11 }, (_, i) => 2000 + i); // 2000–2010
+  // 2000–2025 (26 years)
+  const yearOptions = Array.from({ length: 26 }, (_, i) => 2000 + i);
 
   const lats = groupedData.map((g) => g.lat);
   const lons = groupedData.map((g) => g.lon);
   const sizes = groupedData.map((g) => g.avgPrice);
   const texts = groupedData.map(
-    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>ZIPs in group: ${g.count}`,
+    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(2)})`,
   );
 
   const minSize = Math.min(...sizes);
@@ -256,7 +193,7 @@ const BubbleMap = () => {
       center: { lat: 39, lon: -98 }, // roughly center of the US
       zoom: 3,
     },
-    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by ZIP Groups`,
+    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by 1°×1° Bins`,
     margin: { l: 0, r: 0, t: 40, b: 0 },
   };
 

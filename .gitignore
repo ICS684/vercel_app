@@ -30,6 +30,9 @@ yarn-error.log*
 # local env files
 .env*.local
 .env
+src/data/myenv
+src/data/map.csv
+src/data/generate.py
 
 # vercel
 .vercel
