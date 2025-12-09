@@ -24,9 +24,9 @@ type GroupedData = {
 };
 
 function getBinSizeFromZoom(zoom: number): number {
-  if (zoom < 4) return 1.0;     // fully zoomed out – coarse bins
-  if (zoom < 6) return 0.5;     // regional – medium bins
-  return 0.25;                  // zoomed in – fine bins
+  if (zoom < 4) return 1.0;
+  if (zoom < 6) return 0.5;
+  return 0.25;
 }
 
 function getDataUrlForBinSize(binSize: number): string {
@@ -43,7 +43,7 @@ const BubbleMap = () => {
   const [startYear, setStartYear] = useState(2000);
   const [endYear, setEndYear] = useState(2010);
 
-  const [zoom, setZoom] = useState(3);         // initial map zoom
+  const [zoom, setZoom] = useState(3);
   const [binSize, setBinSize] = useState(1.0); // matches initial zoom
 
   // Update bin size whenever zoom changes enough to cross thresholds
@@ -128,10 +128,7 @@ const BubbleMap = () => {
               for (const col of selectedYearCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
-                  const num =
-                    typeof value === 'number'
-                      ? value
-                      : parseFloat(String(value));
+                  const num = typeof value === 'number' ? value : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
