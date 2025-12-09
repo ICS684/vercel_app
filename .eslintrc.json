@@ -8,6 +8,7 @@
   "rules": {
     "arrow-parens": "off",
     "func-names": "off",
+    "implicit-arrow-linebreak": "off",
     "jsx-a11y/label-has-associated-control": "off",
     "linebreak-style": "off",
     "max-len": ["error", 120],

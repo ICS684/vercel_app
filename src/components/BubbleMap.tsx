@@ -5,64 +5,63 @@ import dynamic from 'next/dynamic';
 import Papa, { type ParseResult } from 'papaparse';
 import { scaleLinear } from 'd3-scale';
 
-import { zipLocationMap } from '../data/zipLocations';
-
 // Dynamically import Plotly since it requires the browser
 const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
 }) as unknown as ComponentType<any>;
 
-const DATA_URL = '/single_family_home.csv';
-
+// One row per spatial bin in the pre-binned CSVs
 type Row = {
-  RegionID?: string;
-  SizeRank?: string;
-  RegionName?: string | number;
-  RegionType?: string;
-  StateName?: string;
-  State?: string;
-  City?: string;
-  Metro?: string;
-  CountyName?: string;
-  [key: string]: any;
-};
-
-type ZipData = {
-  zip: string;
-  lat: number;
-  lon: number;
-  avgPrice: number;
+  lat_bin?: number | string;
+  lon_bin?: number | string;
+  [key: string]: any; // year columns like "2000", "2001", ...
 };
 
 type GroupedData = {
   lat: number;
   lon: number;
   avgPrice: number;
-  count: number;
 };
 
-type BinAgg = {
-  sumPrice: number;
-  sumLat: number;
-  sumLon: number;
-  count: number;
-};
+function getBinSizeFromZoom(zoom: number): number {
+  if (zoom < 4) return 1.0;
+  if (zoom < 6) return 0.5;
+  return 0.25;
+}
 
-// bin sizes in degrees – tweak these to change density
-const LAT_BIN_SIZE = 2;
-const LON_BIN_SIZE = 2;
+function getDataUrlForBinSize(binSize: number): string {
+  if (binSize === 1.0) return '/binned_year_averages_1_0deg.csv';
+  if (binSize === 0.5) return '/binned_year_averages_0_5deg.csv';
+  // default to finest
+  return '/binned_year_averages_0_25deg.csv';
+}
 
 const BubbleMap = () => {
   const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [startYear, setStartYear] = useState(2000);
   const [endYear, setEndYear] = useState(2010);
 
+  const [zoom, setZoom] = useState(3);
+  const [binSize, setBinSize] = useState(1.0); // matches initial zoom
+
+  // Update bin size whenever zoom changes enough to cross thresholds
+  useEffect(() => {
+    const newBinSize = getBinSizeFromZoom(zoom);
+    if (newBinSize !== binSize) {
+      setBinSize(newBinSize);
+    }
+  }, [zoom, binSize]);
+
+  // Load CSV + compute averages for selected years whenever
+  // binSize or year range changes
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const res = await fetch(DATA_URL);
+        const dataUrl = getDataUrlForBinSize(binSize);
+        const res = await fetch(dataUrl);
         const text = await res.text();
 
         Papa.parse<Row>(text, {
@@ -71,138 +70,101 @@ const BubbleMap = () => {
           skipEmptyLines: true,
           complete: (results: ParseResult<Row>) => {
             const rows = results.data || [];
-            console.log('Parsed data:', rows.length, 'rows');
+            console.log(
+              `Parsed data from ${dataUrl}:`,
+              rows.length,
+              'rows for binSize',
+              binSize,
+            );
             if (rows.length === 0) {
+              setGroupedData([]);
               setLoading(false);
               return;
             }
 
-            const keys = Object.keys(rows[0]);
+            const keys = Object.keys(rows[0] ?? {});
+            // Year columns are simple "2000", "2001", ...
+            const yearCols = keys.filter((k) => /^\d{4}$/.test(k));
 
-            // Pick date columns between startYear and endYear
-            const dateCols = keys.filter((k) => {
-              if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) return false;
-              const year = parseInt(k.slice(0, 4), 10);
+            const selectedYearCols = yearCols.filter((k) => {
+              const year = parseInt(k, 10);
               return year >= startYear && year <= endYear;
             });
 
-            console.log(
-              'Date columns found:',
-              dateCols.length,
-              dateCols.slice(0, 5),
-            );
-
-            if (dateCols.length === 0) {
-              console.error('No date columns from 2000–2010 found');
+            if (selectedYearCols.length === 0) {
+              console.error('No year columns found in selected range');
+              setGroupedData([]);
               setLoading(false);
               return;
             }
 
-            const zipData: ZipData[] = [];
+            const groups: GroupedData[] = [];
 
             for (const row of rows) {
-              // 1. Make sure RegionType is 'zip'
-              const regionType = row.RegionType;
-              if (!regionType || regionType.toLowerCase() !== 'zip') {
+              const latBin = row.lat_bin;
+              const lonBin = row.lon_bin;
+
+              if (latBin === undefined || lonBin === undefined) {
                 // eslint-disable-next-line no-continue
                 continue;
               }
 
-              // 2. Get ZIP from RegionName
-              const zip = row.RegionName;
-              if (zip === undefined || zip === null || zip === '') {
-                console.log('Skipping row: missing RegionName / ZIP', { row });
+              const latBinNum = Number(latBin);
+              const lonBinNum = Number(lonBin);
+
+              if (Number.isNaN(latBinNum) || Number.isNaN(lonBinNum)) {
                 // eslint-disable-next-line no-continue
                 continue;
               }
-              const zipStr = String(zip);
 
-              // 3. Lookup lat/lon from your ZIP → location map
-              const loc = zipLocationMap[zipStr];
-              if (!loc) {
-                console.log('Skipping ZIP with no lat/lon mapping:', zipStr);
-                // eslint-disable-next-line no-continue
-                continue;
-              }
-              const { lat, lon } = loc;
+              // Your Python script stores bin *lower edge*.
+              // Place the bubble at the center of the bin.
+              const latCenter = latBinNum + binSize / 2;
+              const lonCenter = lonBinNum + binSize / 2;
 
-              // 4. Compute average price over selected date columns
               let sum = 0;
               let count = 0;
 
-              for (const col of dateCols) {
+              for (const col of selectedYearCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
                   const num = typeof value === 'number' ? value : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
-                  } else {
-                    // console.log('Invalid value for col', col, ':', value);
                   }
-                } else {
-                  // console.log('Null/undefined/empty value for col', col, ':', value);
                 }
               }
 
               if (count > 0) {
                 const avgPrice = sum / count;
-                zipData.push({ zip: zipStr, lat, lon, avgPrice });
-              } else {
-                console.log('No valid values for ZIP', zipStr);
-              }
-            }
-
-            console.log('ZipData entries created:', zipData.length);
-
-            // === NEW: histogram-style binning in lat/lon ===
-            const binMap = new Map<string, BinAgg>();
-
-            for (const zip of zipData) {
-              const latBin = Math.floor(zip.lat / LAT_BIN_SIZE);
-              const lonBin = Math.floor(zip.lon / LON_BIN_SIZE);
-              const key = `${latBin}_${lonBin}`;
-
-              const existing = binMap.get(key);
-              if (existing) {
-                existing.sumPrice += zip.avgPrice;
-                existing.sumLat += zip.lat;
-                existing.sumLon += zip.lon;
-                existing.count += 1;
-              } else {
-                binMap.set(key, {
-                  sumPrice: zip.avgPrice,
-                  sumLat: zip.lat,
-                  sumLon: zip.lon,
-                  count: 1,
+                groups.push({
+                  lat: latCenter,
+                  lon: lonCenter,
+                  avgPrice,
                 });
               }
             }
 
-            const groups: GroupedData[] = [];
-            for (const agg of binMap.values()) {
-              if (agg.count === 0) continue;
-              groups.push({
-                lat: agg.sumLat / agg.count,
-                lon: agg.sumLon / agg.count,
-                avgPrice: agg.sumPrice / agg.count,
-                count: agg.count,
-              });
-            }
-
+            console.log(
+              'Bubbles after year averaging:',
+              groups.length,
+              'for binSize',
+              binSize,
+            );
             setGroupedData(groups);
-            console.log('Grouped data (bins):', groups.length, 'groups');
             setLoading(false);
           },
         });
       } catch (err) {
         console.error('Error loading CSV', err);
+        setGroupedData([]);
         setLoading(false);
       }
     };
 
     loadData();
-  }, [startYear, endYear]);
+  }, [binSize, startYear, endYear]);
 
   if (loading) {
     return <div>Loading...</div>;
@@ -212,13 +174,17 @@ const BubbleMap = () => {
     return <div>No data available</div>;
   }
 
-  const yearOptions = Array.from({ length: 11 }, (_, i) => 2000 + i); // 2000–2010
+  // 2000–2025 (26 years)
+  const yearOptions = Array.from({ length: 26 }, (_, i) => 2000 + i);
 
   const lats = groupedData.map((g) => g.lat);
   const lons = groupedData.map((g) => g.lon);
   const sizes = groupedData.map((g) => g.avgPrice);
   const texts = groupedData.map(
-    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>ZIPs in group: ${g.count}`,
+    (g) =>
+      `Avg Price: $${g.avgPrice.toFixed(
+        0,
+      )}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(2)})<br>Bin size: ${binSize}°`,
   );
 
   const minSize = Math.min(...sizes);
@@ -254,9 +220,9 @@ const BubbleMap = () => {
     mapbox: {
       style: 'open-street-map', // no token needed
       center: { lat: 39, lon: -98 }, // roughly center of the US
-      zoom: 3,
+      zoom,
     },
-    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by ZIP Groups`,
+    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) — bin size ${binSize}°`,
     margin: { l: 0, r: 0, t: 40, b: 0 },
   };
 
@@ -302,6 +268,15 @@ const BubbleMap = () => {
         style={{ width: '100%', height: '100%' }}
         useResizeHandler
         config={{ responsive: true }}
+        onRelayout={(ev: any) => {
+          // Plotly emits relayout events frequently; zoom appears as "mapbox.zoom"
+          if (ev['mapbox.zoom'] !== undefined) {
+            const newZoom = ev['mapbox.zoom'];
+            if (typeof newZoom === 'number') {
+              setZoom(newZoom);
+            }
+          }
+        }}
       />
     </div>
   );
