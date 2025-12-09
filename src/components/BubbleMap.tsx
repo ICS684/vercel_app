@@ -10,9 +10,7 @@ const Plot = dynamic(() => import('react-plotly.js'), {
   ssr: false,
 }) as unknown as ComponentType<any>;
 
-// Use the new, already-binned CSV
-const DATA_URL = '/binned_year_averages.csv';
-
+// One row per spatial bin in the pre-binned CSVs
 type Row = {
   lat_bin?: number | string;
   lon_bin?: number | string;
@@ -25,17 +23,45 @@ type GroupedData = {
   avgPrice: number;
 };
 
+function getBinSizeFromZoom(zoom: number): number {
+  if (zoom < 4) return 1.0;     // fully zoomed out – coarse bins
+  if (zoom < 6) return 0.5;     // regional – medium bins
+  return 0.25;                  // zoomed in – fine bins
+}
+
+function getDataUrlForBinSize(binSize: number): string {
+  if (binSize === 1.0) return '/binned_year_averages_1_0deg.csv';
+  if (binSize === 0.5) return '/binned_year_averages_0_5deg.csv';
+  // default to finest
+  return '/binned_year_averages_0_25deg.csv';
+}
+
 const BubbleMap = () => {
   const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
   const [loading, setLoading] = useState(true);
+
   const [startYear, setStartYear] = useState(2000);
   const [endYear, setEndYear] = useState(2010);
 
+  const [zoom, setZoom] = useState(3);         // initial map zoom
+  const [binSize, setBinSize] = useState(1.0); // matches initial zoom
+
+  // Update bin size whenever zoom changes enough to cross thresholds
+  useEffect(() => {
+    const newBinSize = getBinSizeFromZoom(zoom);
+    if (newBinSize !== binSize) {
+      setBinSize(newBinSize);
+    }
+  }, [zoom, binSize]);
+
+  // Load CSV + compute averages for selected years whenever
+  // binSize or year range changes
   useEffect(() => {
     const loadData = async () => {
       setLoading(true);
       try {
-        const res = await fetch(DATA_URL);
+        const dataUrl = getDataUrlForBinSize(binSize);
+        const res = await fetch(dataUrl);
         const text = await res.text();
 
         Papa.parse<Row>(text, {
@@ -44,28 +70,26 @@ const BubbleMap = () => {
           skipEmptyLines: true,
           complete: (results: ParseResult<Row>) => {
             const rows = results.data || [];
-            console.log('Parsed data:', rows.length, 'rows');
+            console.log(
+              `Parsed data from ${dataUrl}:`,
+              rows.length,
+              'rows for binSize',
+              binSize,
+            );
             if (rows.length === 0) {
+              setGroupedData([]);
               setLoading(false);
               return;
             }
 
             const keys = Object.keys(rows[0] ?? {});
-
-            // Year columns are simple 4-digit strings: "2000", "2001", ...
+            // Year columns are simple "2000", "2001", ...
             const yearCols = keys.filter((k) => /^\d{4}$/.test(k));
-            console.log('Year columns:', yearCols);
 
             const selectedYearCols = yearCols.filter((k) => {
               const year = parseInt(k, 10);
               return year >= startYear && year <= endYear;
             });
-
-            console.log(
-              'Selected year columns:',
-              selectedYearCols.length,
-              selectedYearCols,
-            );
 
             if (selectedYearCols.length === 0) {
               console.error('No year columns found in selected range');
@@ -81,7 +105,6 @@ const BubbleMap = () => {
               const lonBin = row.lon_bin;
 
               if (latBin === undefined || lonBin === undefined) {
-                console.log('Skipping row: missing lat_bin or lon_bin', row);
                 // eslint-disable-next-line no-continue
                 continue;
               }
@@ -90,14 +113,14 @@ const BubbleMap = () => {
               const lonBinNum = Number(lonBin);
 
               if (Number.isNaN(latBinNum) || Number.isNaN(lonBinNum)) {
-                console.log('Skipping row: non-numeric lat_bin/lon_bin', row);
                 // eslint-disable-next-line no-continue
                 continue;
               }
 
-              // Place bubble at the center of the 1°×1° bin
-              const latCenter = latBinNum + 0.5;
-              const lonCenter = lonBinNum + 0.5;
+              // Your Python script stores bin *lower edge*.
+              // Place the bubble at the center of the bin.
+              const latCenter = latBinNum + binSize / 2;
+              const lonCenter = lonBinNum + binSize / 2;
 
               let sum = 0;
               let count = 0;
@@ -105,7 +128,10 @@ const BubbleMap = () => {
               for (const col of selectedYearCols) {
                 const value = row[col];
                 if (value !== null && value !== undefined && value !== '') {
-                  const num = typeof value === 'number' ? value : parseFloat(String(value));
+                  const num =
+                    typeof value === 'number'
+                      ? value
+                      : parseFloat(String(value));
                   if (!Number.isNaN(num)) {
                     sum += num;
                     count += 1;
@@ -123,19 +149,25 @@ const BubbleMap = () => {
               }
             }
 
-            console.log('Binned rows used as bubbles:', groups.length);
+            console.log(
+              'Bubbles after year averaging:',
+              groups.length,
+              'for binSize',
+              binSize,
+            );
             setGroupedData(groups);
             setLoading(false);
           },
         });
       } catch (err) {
         console.error('Error loading CSV', err);
+        setGroupedData([]);
         setLoading(false);
       }
     };
 
     loadData();
-  }, [startYear, endYear]);
+  }, [binSize, startYear, endYear]);
 
   if (loading) {
     return <div>Loading...</div>;
@@ -152,7 +184,10 @@ const BubbleMap = () => {
   const lons = groupedData.map((g) => g.lon);
   const sizes = groupedData.map((g) => g.avgPrice);
   const texts = groupedData.map(
-    (g) => `Avg Price: $${g.avgPrice.toFixed(0)}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(2)})`,
+    (g) =>
+      `Avg Price: $${g.avgPrice.toFixed(
+        0,
+      )}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(2)})<br>Bin size: ${binSize}°`,
   );
 
   const minSize = Math.min(...sizes);
@@ -188,9 +223,9 @@ const BubbleMap = () => {
     mapbox: {
       style: 'open-street-map', // no token needed
       center: { lat: 39, lon: -98 }, // roughly center of the US
-      zoom: 3,
+      zoom,
     },
-    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) by 1°×1° Bins`,
+    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) — bin size ${binSize}°`,
     margin: { l: 0, r: 0, t: 40, b: 0 },
   };
 
@@ -236,6 +271,15 @@ const BubbleMap = () => {
         style={{ width: '100%', height: '100%' }}
         useResizeHandler
         config={{ responsive: true }}
+        onRelayout={(ev: any) => {
+          // Plotly emits relayout events frequently; zoom appears as "mapbox.zoom"
+          if (ev['mapbox.zoom'] !== undefined) {
+            const newZoom = ev['mapbox.zoom'];
+            if (typeof newZoom === 'number') {
+              setZoom(newZoom);
+            }
+          }
+        }}
       />
     </div>
   );
