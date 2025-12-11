@@ -37,7 +37,7 @@ const Home = () => (
               fontSize: 14,
             }}
           >
-            Explore average single-family home values across the US. Zoom in to
+            Explore average single-family home values across the United States. Zoom in to
             reveal finer-grained bubbles.
           </p>
           <div style={{ width: '100%' }}>

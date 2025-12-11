@@ -21,24 +21,46 @@ type GroupedData = {
   lat: number;
   lon: number;
   avgPrice: number;
+  latBin: number;
+  lonBin: number;
+};
+
+type TimeSeriesPoint = {
+  year: number;
+  value: number | null;
+};
+
+type SelectedBinSeries = {
+  latBin: number;
+  lonBin: number;
+  latCenter: number;
+  lonCenter: number;
+  binSize: number;
+  series: TimeSeriesPoint[];
 };
 
 function getBinSizeFromZoom(zoom: number): number {
-  if (zoom < 4) return 1.0;
-  if (zoom < 6) return 0.5;
-  return 0.25;
+  if (zoom < 2) return 1.0;
+  if (zoom < 4) return 0.5;
+  if (zoom < 6) return 0.25;
+  return 0.125;
 }
 
 function getDataUrlForBinSize(binSize: number): string {
   if (binSize === 1.0) return '/binned_year_averages_1_0deg.csv';
   if (binSize === 0.5) return '/binned_year_averages_0_5deg.csv';
-  // default to finest
-  return '/binned_year_averages_0_25deg.csv';
+  if (binSize === 0.25) return '/binned_year_averages_0_25deg.csv';
+  return '/binned_year_averages_0_125deg.csv';
+}
+
+function binKey(binSize: number): string {
+  // "1", "0.5", "0.25", "0.125"
+  return binSize.toString();
 }
 
 const BubbleMap = () => {
   const [groupedData, setGroupedData] = useState<GroupedData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const [startYear, setStartYear] = useState(2000);
   const [endYear, setEndYear] = useState(2010);
@@ -46,8 +68,22 @@ const BubbleMap = () => {
   const [zoom, setZoom] = useState(3);
   const [binSize, setBinSize] = useState(1.0); // matches initial zoom
 
+  const [center, setCenter] = useState<{ lat: number; lon: number }>({
+    lat: 39,
+    lon: -98,
+  });
+
+  // raw data for each bin size, keyed by binSize string
+  const [rawDataByBin, setRawDataByBin] = useState<Record<string, Row[]>>({});
+
   // overlay: 'visible' -> 'fading' (1s) -> 'hidden'
-  const [overlayState, setOverlayState] = useState<'visible' | 'fading' | 'hidden'>('visible');
+  const [overlayState, setOverlayState] = useState<'visible' | 'fading' | 'hidden'>(
+    'visible',
+  );
+
+  // selected bin time-series for detail view
+  const [selectedBinSeries, setSelectedBinSeries] =
+    useState<SelectedBinSeries | null>(null);
 
   const wrapperStyle = {
     padding: 16,
@@ -93,119 +129,146 @@ const BubbleMap = () => {
     }
   }, [zoom, binSize]);
 
-  // Load CSV + compute averages for selected years whenever
-  // binSize or year range changes
+  // When bin size changes, clear any selected detail series (since bins changed)
   useEffect(() => {
-    const loadData = async () => {
-      setLoading(true);
+    setSelectedBinSeries(null);
+  }, [binSize]);
+
+  // Initial load: fetch all 4 CSVs once and cache their rows
+  useEffect(() => {
+    const sizes = [1.0, 0.5, 0.25, 0.125];
+
+    const loadAll = async () => {
       try {
-        const dataUrl = getDataUrlForBinSize(binSize);
-        const res = await fetch(dataUrl);
-        const text = await res.text();
+        const results: Record<string, Row[]> = {};
 
-        Papa.parse<Row>(text, {
-          header: true,
-          dynamicTyping: true,
-          skipEmptyLines: true,
-          complete: (results: ParseResult<Row>) => {
-            const rows = results.data || [];
-            console.log(
-              `Parsed data from ${dataUrl}:`,
-              rows.length,
-              'rows for binSize',
-              binSize,
-            );
-            if (rows.length === 0) {
-              setGroupedData([]);
-              setLoading(false);
-              return;
-            }
+        const promises = sizes.map(async (size) => {
+          const url = getDataUrlForBinSize(size);
+          const res = await fetch(url);
+          const text = await res.text();
 
-            const keys = Object.keys(rows[0] ?? {});
-            // Year columns are simple "2000", "2001", ...
-            const yearCols = keys.filter((k) => /^\d{4}$/.test(k));
-
-            const selectedYearCols = yearCols.filter((k) => {
-              const year = parseInt(k, 10);
-              return year >= startYear && year <= endYear;
+          return new Promise<void>((resolve) => {
+            Papa.parse<Row>(text, {
+              header: true,
+              dynamicTyping: true,
+              skipEmptyLines: true,
+              complete: (parsed: ParseResult<Row>) => {
+                const rows = parsed.data || [];
+                console.log(
+                  `Parsed data from ${url}:`,
+                  rows.length,
+                  'rows for binSize',
+                  size,
+                );
+                results[binKey(size)] = rows;
+                resolve();
+              },
             });
-
-            if (selectedYearCols.length === 0) {
-              console.error('No year columns found in selected range');
-              setGroupedData([]);
-              setLoading(false);
-              return;
-            }
-
-            const groups: GroupedData[] = [];
-
-            for (const row of rows) {
-              const latBin = row.lat_bin;
-              const lonBin = row.lon_bin;
-
-              if (latBin === undefined || lonBin === undefined) {
-                // eslint-disable-next-line no-continue
-                continue;
-              }
-
-              const latBinNum = Number(latBin);
-              const lonBinNum = Number(lonBin);
-
-              if (Number.isNaN(latBinNum) || Number.isNaN(lonBinNum)) {
-                // eslint-disable-next-line no-continue
-                continue;
-              }
-
-              // Python script stores bin *lower edge*.
-              // Place the bubble at the center of the bin.
-              const latCenter = latBinNum + binSize / 2;
-              const lonCenter = lonBinNum + binSize / 2;
-
-              let sum = 0;
-              let count = 0;
-
-              for (const col of selectedYearCols) {
-                const value = row[col];
-                if (value !== null && value !== undefined && value !== '') {
-                  const num = typeof value === 'number' ? value : parseFloat(String(value));
-                  if (!Number.isNaN(num)) {
-                    sum += num;
-                    count += 1;
-                  }
-                }
-              }
-
-              if (count > 0) {
-                const avgPrice = sum / count;
-                groups.push({
-                  lat: latCenter,
-                  lon: lonCenter,
-                  avgPrice,
-                });
-              }
-            }
-
-            console.log(
-              'Bubbles after year averaging:',
-              groups.length,
-              'for binSize',
-              binSize,
-            );
-            setGroupedData(groups);
-            setLoading(false);
-          },
+          });
         });
+
+        await Promise.all(promises);
+        setRawDataByBin(results);
       } catch (err) {
-        console.error('Error loading CSV', err);
-        setGroupedData([]);
-        setLoading(false);
+        console.error('Error loading CSV data', err);
+        setRawDataByBin({});
+      } finally {
+        setInitialLoading(false);
       }
     };
 
-    loadData();
-  }, [binSize, startYear, endYear]);
+    loadAll();
+  }, []);
 
-  if (loading) {
+  // Whenever raw data, bin size, or year range changes, recompute groupedData in memory
+  useEffect(() => {
+    const key = binKey(binSize);
+    const rows = rawDataByBin[key];
+
+    if (!rows || rows.length === 0) {
+      if (!initialLoading) {
+        console.warn('No rows available for binSize', binSize);
+      }
+      setGroupedData([]);
+      return;
+    }
+
+    const keys = Object.keys(rows[0] ?? {});
+    // Year columns are simple "2000", "2001", ...
+    const yearCols = keys.filter((k) => /^\d{4}$/.test(k));
+
+    const selectedYearCols = yearCols.filter((k) => {
+      const year = parseInt(k, 10);
+      return year >= startYear && year <= endYear;
+    });
+
+    if (selectedYearCols.length === 0) {
+      console.error('No year columns found in selected range');
+      setGroupedData([]);
+      return;
+    }
+
+    const groups: GroupedData[] = [];
+
+    for (const row of rows) {
+      const latBin = row.lat_bin;
+      const lonBin = row.lon_bin;
+
+      if (latBin === undefined || lonBin === undefined) {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
+      const latBinNum = Number(latBin);
+      const lonBinNum = Number(lonBin);
+
+      if (Number.isNaN(latBinNum) || Number.isNaN(lonBinNum)) {
+        // eslint-disable-next-line no-continue
+        continue;
+      }
+
+      // Python script stores bin *lower edge*.
+      // Place the bubble at the center of the bin.
+      const latCenter = latBinNum + binSize / 2;
+      const lonCenter = lonBinNum + binSize / 2;
+
+      let sum = 0;
+      let count = 0;
+
+      for (const col of selectedYearCols) {
+        const value = row[col];
+        if (value !== null && value !== undefined && value !== '') {
+          const num =
+            typeof value === 'number' ? value : parseFloat(String(value));
+          if (!Number.isNaN(num)) {
+            sum += num;
+            count += 1;
+          }
+        }
+      }
+
+      if (count > 0) {
+        const avgPrice = sum / count;
+        groups.push({
+          lat: latCenter,
+          lon: lonCenter,
+          avgPrice,
+          latBin: latBinNum,
+          lonBin: lonBinNum,
+        });
+      }
+    }
+
+    console.log(
+      'Bubbles after year averaging:',
+      groups.length,
+      'for binSize',
+      binSize,
+    );
+    setGroupedData(groups);
+  }, [rawDataByBin, binSize, startYear, endYear, initialLoading]);
+
+  if (initialLoading) {
     return (
       <div style={wrapperStyle}>
         <div style={cardStyle}>
@@ -254,6 +317,7 @@ const BubbleMap = () => {
       lon: lons,
       text: texts,
       hoverinfo: 'text',
+      customdata: groupedData.map((g) => [g.latBin, g.lonBin]),
       marker: {
         size: sizes.map((s) => sizeScale(s)),
         color: sizes,
@@ -276,7 +340,7 @@ const BubbleMap = () => {
   const layout = {
     mapbox: {
       style: 'carto-darkmatter', // dark, tokenless fallback
-      center: { lat: 39, lon: -98 }, // roughly center of the US
+      center: { lat: center.lat, lon: center.lon },
       zoom,
     },
     title: {
@@ -290,6 +354,177 @@ const BubbleMap = () => {
     font: {
       color: '#e5e7eb',
     },
+  };
+
+  // Build Plotly trace & layout for the selected bin's full 2000–2025 series
+  const renderSelectedSeries = () => {
+    if (!selectedBinSeries) return null;
+
+    const validPoints = selectedBinSeries.series.filter(
+      (p) => typeof p.value === 'number' && !Number.isNaN(p.value),
+    );
+
+    if (validPoints.length === 0) {
+      return (
+        <div
+          style={{
+            marginTop: 24,
+            padding: 16,
+            borderRadius: 12,
+            background: 'rgba(15,23,42,0.9)',
+            border: '1px solid rgba(148,163,184,0.5)',
+          }}
+        >
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              marginBottom: 8,
+            }}
+          >
+            <h3
+              style={{
+                margin: 0,
+                fontSize: 16,
+              }}
+            >
+              No time-series data available for this bin
+            </h3>
+            <button
+              type="button"
+              onClick={() => setSelectedBinSeries(null)}
+              style={{
+                border: 'none',
+                background: 'transparent',
+                color: '#9ca3af',
+                cursor: 'pointer',
+                fontSize: 18,
+                lineHeight: 1,
+              }}
+            >
+              ×
+            </button>
+          </div>
+          <p
+            style={{
+              margin: 0,
+              fontSize: 13,
+              color: '#9ca3af',
+            }}
+          >
+            Try another bubble nearby; this one has no recorded ZHVI values
+            between 2000 and 2025.
+          </p>
+        </div>
+      );
+    }
+
+    const years = validPoints.map((p) => p.year);
+    const values = validPoints.map((p) => p.value as number);
+
+    const tsData = [
+      {
+        type: 'scatter',
+        mode: 'lines+markers',
+        x: years,
+        y: values,
+        line: {
+          shape: 'linear',
+        },
+        marker: {
+          size: 6,
+        },
+        hovertemplate: 'Year %{x}<br>ZHVI: $%{y:.0f}<extra></extra>',
+      },
+    ];
+
+    const tsLayout = {
+      title: {
+        text: `ZHVI Trend (2000–2025) for Bin Center (${selectedBinSeries.latCenter.toFixed(
+          2,
+        )}, ${selectedBinSeries.lonCenter.toFixed(2)}) — ${selectedBinSeries.binSize}°`,
+        x: 0,
+        xanchor: 'left',
+        font: {
+          size: 16,
+        },
+      },
+      margin: { l: 60, r: 20, t: 40, b: 40 },
+      paper_bgcolor: 'rgba(15,23,42,1)',
+      plot_bgcolor: 'rgba(15,23,42,1)',
+      font: {
+        color: '#e5e7eb',
+      },
+      xaxis: {
+        title: 'Year',
+        dtick: 1,
+        gridcolor: '#1f2937',
+        zerolinecolor: '#1f2937',
+      },
+      yaxis: {
+        title: 'ZHVI ($)',
+        gridcolor: '#1f2937',
+        zerolinecolor: '#1f2937',
+      },
+    };
+
+    return (
+      <div
+        style={{
+          marginTop: 24,
+          borderRadius: 12,
+          overflow: 'hidden',
+          border: '1px solid rgba(55,65,81,0.8)',
+          background: 'rgba(15,23,42,0.95)',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '8px 12px',
+            borderBottom: '1px solid rgba(31,41,55,0.9)',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 13,
+              color: '#9ca3af',
+            }}
+          >
+            Click bubbles on the map to inspect their full ZHVI history.
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelectedBinSeries(null)}
+            style={{
+              border: 'none',
+              background: 'transparent',
+              color: '#9ca3af',
+              cursor: 'pointer',
+              fontSize: 18,
+              lineHeight: 1,
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ height: 320 }}>
+          <Plot
+            data={tsData as any}
+            layout={tsLayout as any}
+            style={{ width: '100%', height: '100%' }}
+            useResizeHandler
+            config={{
+              responsive: true,
+              displayModeBar: true,
+            }}
+          />
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -307,7 +542,8 @@ const BubbleMap = () => {
                 opacity: 0.7,
               }}
             >
-              Zoom in to see finer-grained bubbles.
+              Zoom in to see finer-grained bubbles. Click a bubble for its full
+              2000–2025 ZHVI history.
             </p>
           </div>
 
@@ -346,6 +582,7 @@ const BubbleMap = () => {
           </div>
         </div>
 
+        {/* Map */}
         <div style={{ height: 600, borderRadius: 12, overflow: 'hidden' }}>
           <Plot
             data={data}
@@ -357,16 +594,93 @@ const BubbleMap = () => {
               scrollZoom: true,
             }}
             onRelayout={(ev: any) => {
-              // Plotly emits relayout events frequently; zoom appears as "mapbox.zoom"
+              // Zoom changes
               if (ev['mapbox.zoom'] !== undefined) {
                 const newZoom = ev['mapbox.zoom'];
                 if (typeof newZoom === 'number') {
                   setZoom(newZoom);
                 }
               }
+
+              // Center changes – Plotly may send either "mapbox.center"
+              // or "mapbox.center.lat"/"mapbox.center.lon"
+              if (ev['mapbox.center']) {
+                const c = ev['mapbox.center'];
+                if (
+                  c &&
+                  typeof c.lat === 'number' &&
+                  typeof c.lon === 'number'
+                ) {
+                  setCenter({ lat: c.lat, lon: c.lon });
+                }
+              } else {
+                const newLat = ev['mapbox.center.lat'];
+                const newLon = ev['mapbox.center.lon'];
+                if (typeof newLat === 'number' && typeof newLon === 'number') {
+                  setCenter({ lat: newLat, lon: newLon });
+                }
+              }
+            }}
+            onClick={(ev: any) => {
+              const point = ev.points && ev.points[0];
+              if (!point || !point.customdata) return;
+
+              const [latBin, lonBin] = point.customdata as [number, number];
+              const rows = rawDataByBin[binKey(binSize)];
+              if (!rows || rows.length === 0) return;
+
+              // Find the row for this bin
+              const row = rows.find((r) => {
+                const rbLat = Number(r.lat_bin);
+                const rbLon = Number(r.lon_bin);
+                return rbLat === latBin && rbLon === lonBin;
+              });
+
+              if (!row) return;
+
+              // Extract all year columns 2000–2025
+              const keys = Object.keys(row ?? {});
+              const yearCols = keys
+                .filter((k) => /^\d{4}$/.test(k))
+                .map((k) => parseInt(k, 10))
+                .sort((a, b) => a - b);
+
+              const series: TimeSeriesPoint[] = yearCols.map((year) => {
+                const valueRaw = row[String(year)];
+                if (
+                  valueRaw === null ||
+                  valueRaw === undefined ||
+                  valueRaw === ''
+                ) {
+                  return { year, value: null };
+                }
+                const num =
+                  typeof valueRaw === 'number'
+                    ? valueRaw
+                    : parseFloat(String(valueRaw));
+                return {
+                  year,
+                  value: Number.isNaN(num) ? null : num,
+                };
+              });
+
+              const latCenter = latBin + binSize / 2;
+              const lonCenter = lonBin + binSize / 2;
+
+              setSelectedBinSeries({
+                latBin,
+                lonBin,
+                latCenter,
+                lonCenter,
+                binSize,
+                series,
+              });
             }}
           />
         </div>
+
+        {/* Time-series detail panel (if bubble selected) */}
+        {renderSelectedSeries()}
 
         {/* CLICK-TO-DISMISS OVERLAY */}
         {overlayState !== 'hidden' && (
@@ -454,9 +768,9 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  Each circle shows the average single-family home ZHVI value in a
-                  geographic bin. Darker blues are lower prices; bright yellows
-                  are higher.
+                  Each circle shows the average single-family home ZHVI value in
+                  a geographic bin. Darker blues are lower prices; bright
+                  yellows are higher.
                 </p>
               </div>
 
@@ -518,12 +832,16 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  The ZHVI value is the weighted average of the 35th to
-                  65th percentile range to represent the typical home.
+                  The ZHVI value is the weighted average of the 35th to 65th
+                  percentile range to represent the typical home.
                   <br />
                   Data sourced from:
                   <br />
-                  <a href="https://www.zillow.com/research/data/" target="_blank" rel="noopener noreferrer">
+                  <a
+                    href="https://www.zillow.com/research/data/"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
                     https://www.zillow.com/research/data/
                   </a>
                 </p>
