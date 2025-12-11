@@ -7,9 +7,12 @@
   },
   "rules": {
     "arrow-parens": "off",
+    "eol-last": "off",
     "func-names": "off",
     "implicit-arrow-linebreak": "off",
+    "jsx-a11y/click-events-have-key-events": "off",
     "jsx-a11y/label-has-associated-control": "off",
+    "jsx-a11y/no-static-element-interactions": "off",
     "linebreak-style": "off",
     "max-len": ["error", 120],
     "no-console": "off",

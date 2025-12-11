@@ -46,6 +46,45 @@ const BubbleMap = () => {
   const [zoom, setZoom] = useState(3);
   const [binSize, setBinSize] = useState(1.0); // matches initial zoom
 
+  // overlay: 'visible' -> 'fading' (1s) -> 'hidden'
+  const [overlayState, setOverlayState] = useState<'visible' | 'fading' | 'hidden'>('visible');
+
+  const wrapperStyle = {
+    padding: 16,
+    boxSizing: 'border-box' as const,
+    color: '#e5e7eb',
+  };
+
+  const cardStyle = {
+    maxWidth: 1200,
+    margin: '0 auto',
+    padding: 16,
+    borderRadius: 16,
+    background: 'rgba(15,23,42,0.9)',
+    boxShadow: '0 24px 60px rgba(15,23,42,0.9)',
+    boxSizing: 'border-box' as const,
+    position: 'relative' as const, // so overlay can absolutely-position over it
+    overflow: 'hidden' as const,
+  };
+
+  const controlsRowStyle = {
+    marginBottom: 20,
+    display: 'flex',
+    flexWrap: 'wrap' as const,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 12,
+  };
+
+  const selectStyle = {
+    marginLeft: 8,
+    backgroundColor: '#020617',
+    color: '#e5e7eb',
+    borderRadius: 8,
+    border: '1px solid #4b5563',
+    padding: '4px 8px',
+  };
+
   // Update bin size whenever zoom changes enough to cross thresholds
   useEffect(() => {
     const newBinSize = getBinSizeFromZoom(zoom);
@@ -117,7 +156,7 @@ const BubbleMap = () => {
                 continue;
               }
 
-              // Your Python script stores bin *lower edge*.
+              // Python script stores bin *lower edge*.
               // Place the bubble at the center of the bin.
               const latCenter = latBinNum + binSize / 2;
               const lonCenter = lonBinNum + binSize / 2;
@@ -167,11 +206,23 @@ const BubbleMap = () => {
   }, [binSize, startYear, endYear]);
 
   if (loading) {
-    return <div>Loading...</div>;
+    return (
+      <div style={wrapperStyle}>
+        <div style={cardStyle}>
+          <div>Loading...</div>
+        </div>
+      </div>
+    );
   }
 
   if (groupedData.length === 0) {
-    return <div>No data available</div>;
+    return (
+      <div style={wrapperStyle}>
+        <div style={cardStyle}>
+          <div>No data available</div>
+        </div>
+      </div>
+    );
   }
 
   // 2000–2025 (26 years)
@@ -184,7 +235,9 @@ const BubbleMap = () => {
     (g) =>
       `Avg Price: $${g.avgPrice.toFixed(
         0,
-      )}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(2)})<br>Bin size: ${binSize}°`,
+      )}<br>Bin center: (${g.lat.toFixed(2)}, ${g.lon.toFixed(
+        2,
+      )})<br>Bin size: ${binSize}°`,
   );
 
   const minSize = Math.min(...sizes);
@@ -211,73 +264,277 @@ const BubbleMap = () => {
           title: { text: 'Avg Price' },
           tickprefix: '$',
         },
-        opacity: 0.8,
+        opacity: 0.9,
+        line: {
+          width: 1.5,
+          color: '#facc15', // yellow ring for visibility
+        },
       },
     },
   ];
 
   const layout = {
     mapbox: {
-      style: 'open-street-map', // no token needed
+      style: 'carto-darkmatter', // dark, tokenless fallback
       center: { lat: 39, lon: -98 }, // roughly center of the US
       zoom,
     },
-    title: `Bubble Map of Average Single-Family Home Prices (${startYear}-${endYear}) — bin size ${binSize}°`,
+    title: {
+      text: `Average Single-Family Home Prices (${startYear}-${endYear})`,
+      x: 0.02,
+      xanchor: 'left',
+    },
     margin: { l: 0, r: 0, t: 40, b: 0 },
+    paper_bgcolor: '#020617',
+    plot_bgcolor: '#020617',
+    font: {
+      color: '#e5e7eb',
+    },
   };
 
   return (
-    <div>
-      <div style={{ marginBottom: 20 }}>
-        {/* Start year */}
-        <label style={{ marginRight: 12 }}>
-          Start Year:
-          <select
-            value={startYear}
-            onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
-            style={{ marginLeft: 8 }}
-          >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </label>
+    <div style={wrapperStyle}>
+      <div style={cardStyle}>
+        <div style={controlsRowStyle}>
+          <div>
+            <h2 style={{ margin: 0, fontSize: 20 }}>
+              Zillow Home Value Index Bubble Map
+            </h2>
+            <p
+              style={{
+                margin: 0,
+                fontSize: 12,
+                opacity: 0.7,
+              }}
+            >
+              Zoom in to see finer-grained bubbles.
+            </p>
+          </div>
 
-        {/* End year */}
-        <label style={{ marginLeft: 20 }}>
-          End Year:
-          <select
-            value={endYear}
-            onChange={(e) => setEndYear(parseInt(e.target.value, 10))}
-            style={{ marginLeft: 8 }}
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center' }}>
+            {/* Start year */}
+            <label style={{ marginRight: 12, fontSize: 14 }}>
+              Start Year:
+              <select
+                value={startYear}
+                onChange={(e) => setStartYear(parseInt(e.target.value, 10))}
+                style={selectStyle}
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            {/* End year */}
+            <label style={{ fontSize: 14 }}>
+              End Year:
+              <select
+                value={endYear}
+                onChange={(e) => setEndYear(parseInt(e.target.value, 10))}
+                style={selectStyle}
+              >
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+        </div>
+
+        <div style={{ height: 600, borderRadius: 12, overflow: 'hidden' }}>
+          <Plot
+            data={data}
+            layout={layout as any}
+            style={{ width: '100%', height: '100%' }}
+            useResizeHandler
+            config={{
+              responsive: true,
+              scrollZoom: true,
+            }}
+            onRelayout={(ev: any) => {
+              // Plotly emits relayout events frequently; zoom appears as "mapbox.zoom"
+              if (ev['mapbox.zoom'] !== undefined) {
+                const newZoom = ev['mapbox.zoom'];
+                if (typeof newZoom === 'number') {
+                  setZoom(newZoom);
+                }
+              }
+            }}
+          />
+        </div>
+
+        {/* CLICK-TO-DISMISS OVERLAY */}
+        {overlayState !== 'hidden' && (
+          <div
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: 'rgba(15,23,42,0.85)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 24,
+              zIndex: 20,
+              opacity: overlayState === 'visible' ? 1 : 0,
+              transition: 'opacity 1s ease-out',
+              cursor: 'pointer',
+            }}
+            onClick={() => {
+              if (overlayState === 'visible') {
+                setOverlayState('fading');
+              }
+            }}
+            onTransitionEnd={() => {
+              if (overlayState === 'fading') {
+                setOverlayState('hidden');
+              }
+            }}
           >
-            {yearOptions.map((year) => (
-              <option key={year} value={year}>
-                {year}
-              </option>
-            ))}
-          </select>
-        </label>
+            {/* Ribbon-style title */}
+            <div
+              style={{
+                padding: '8px 24px',
+                borderRadius: 999,
+                background:
+                  'linear-gradient(90deg, #1d4ed8 0%, #38bdf8 50%, #22c55e 100%)',
+                marginBottom: 24,
+                boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+              }}
+            >
+              <span
+                style={{
+                  fontWeight: 600,
+                  letterSpacing: 0.5,
+                }}
+              >
+                Quick Overview
+              </span>
+            </div>
+
+            {/* Hint cards */}
+            <div
+              style={{
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 16,
+                maxWidth: 900,
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: 260,
+                  padding: 16,
+                  borderRadius: 16,
+                  background: 'rgba(15,23,42,0.95)',
+                  border: '1px solid rgba(56,189,248,0.35)',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.7)',
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🗺️</div>
+                <h3
+                  style={{
+                    fontSize: 16,
+                    margin: 0,
+                    marginBottom: 6,
+                  }}
+                >
+                  Explore the whole US
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: '#9ca3af',
+                  }}
+                >
+                  Each circle shows the average single-family home value in a
+                  geographic bin. Darker blues are lower prices; bright yellows
+                  are higher.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  width: 260,
+                  padding: 16,
+                  borderRadius: 16,
+                  background: 'rgba(15,23,42,0.95)',
+                  border: '1px solid rgba(129,140,248,0.6)',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.7)',
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🔍</div>
+                <h3
+                  style={{
+                    fontSize: 16,
+                    margin: 0,
+                    marginBottom: 6,
+                  }}
+                >
+                  LOBROOOOOOOOOOON
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: '#9ca3af',
+                  }}
+                >
+                  Some text here.
+                </p>
+              </div>
+
+              <div
+                style={{
+                  width: 260,
+                  padding: 16,
+                  borderRadius: 16,
+                  background: 'rgba(15,23,42,0.95)',
+                  border: '1px solid rgba(250,204,21,0.6)',
+                  boxShadow: '0 16px 40px rgba(0,0,0,0.7)',
+                }}
+              >
+                <div style={{ fontSize: 24, marginBottom: 8 }}>🎚️</div>
+                <h3
+                  style={{
+                    fontSize: 16,
+                    margin: 0,
+                    marginBottom: 6,
+                  }}
+                >
+                  Elijah likes men
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    fontSize: 13,
+                    color: '#9ca3af',
+                  }}
+                >
+                  What the dawg doing in that tesla with Jason
+                </p>
+              </div>
+            </div>
+
+            <p
+              style={{
+                marginTop: 24,
+                fontSize: 12,
+                color: '#9ca3af',
+              }}
+            >
+              Click anywhere to start exploring.
+            </p>
+          </div>
+        )}
       </div>
-
-      <Plot
-        data={data}
-        layout={layout as any}
-        style={{ width: '100%', height: '100%' }}
-        useResizeHandler
-        config={{ responsive: true }}
-        onRelayout={(ev: any) => {
-          // Plotly emits relayout events frequently; zoom appears as "mapbox.zoom"
-          if (ev['mapbox.zoom'] !== undefined) {
-            const newZoom = ev['mapbox.zoom'];
-            if (typeof newZoom === 'number') {
-              setZoom(newZoom);
-            }
-          }
-        }}
-      />
     </div>
   );
 };
