@@ -792,7 +792,7 @@ const BubbleMap = () => {
                     marginBottom: 6,
                   }}
                 >
-                  LOBROOOOOOOOOOON
+                  Scroll to Zoom
                 </h3>
                 <p
                   style={{
@@ -801,7 +801,8 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  Jared.
+                  Scroll to see the map with more detail.
+                  This will also add more bubbles with finer granularity, giving a more detailed visualization.
                 </p>
               </div>
 
