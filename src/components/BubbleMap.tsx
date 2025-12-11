@@ -454,7 +454,7 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  Each circle shows the average single-family home value in a
+                  Each circle shows the average single-family home ZHVI value in a
                   geographic bin. Darker blues are lower prices; bright yellows
                   are higher.
                 </p>
@@ -487,7 +487,7 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  Some text here.
+                  Jared.
                 </p>
               </div>
 
@@ -509,7 +509,7 @@ const BubbleMap = () => {
                     marginBottom: 6,
                   }}
                 >
-                  Elijah likes men
+                  Zillow ZHVI value
                 </h3>
                 <p
                   style={{
@@ -518,7 +518,14 @@ const BubbleMap = () => {
                     color: '#9ca3af',
                   }}
                 >
-                  What the dawg doing in that tesla with Jason
+                  The ZHVI value is the weighted average of the 35th to
+                  65th percentile range to represent the typical home.
+                  <br />
+                  Data sourced from:
+                  <br />
+                  <a href="https://www.zillow.com/research/data/" target="_blank" rel="noopener noreferrer">
+                    https://www.zillow.com/research/data/
+                  </a>
                 </p>
               </div>
             </div>
