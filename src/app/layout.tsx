@@ -5,8 +5,6 @@ import './globals.css';
 import 'bootstrap/dist/css/bootstrap.min.css';
 import dynamic from 'next/dynamic';
 
-const NavBar = dynamic(() => import('@/components/Navbar'), { ssr: false });
-const Footer = dynamic(() => import('@/components/Footer'), { ssr: false });
 const Providers = dynamic(() => import('./providers'), { ssr: false });
 
 const inter = Inter({ subsets: ['latin'] });
@@ -51,9 +49,7 @@ export default function RootLayout({
       <body className={classString} style={bodyStyle}>
         <Providers>
           <div style={contentWrapperStyle}>
-            <NavBar />
             <div style={mainWrapperStyle}>{children}</div>
-            <Footer />
           </div>
         </Providers>
       </body>
